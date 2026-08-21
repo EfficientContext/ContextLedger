@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT_DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+cd "$ROOT_DIR"
+export CONTEXT_LEDGER_HOME="$ROOT_DIR"
+if ! "$ROOT_DIR/scripts/local-db.sh" status >/dev/null 2>&1; then
+  "$ROOT_DIR/scripts/local-db.sh" start >/dev/null
+fi
+exec node dist/src/interfaces/mcp/server.js

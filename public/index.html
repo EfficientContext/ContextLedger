@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ContextLedger</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">CS</span>
+          <div>
+            <strong>ContextLedger</strong><small>PostgreSQL work ledger</small>
+          </div>
+        </div>
+        <nav>
+          <button class="nav-item active" data-view="reports">周报</button>
+          <button class="nav-item" data-view="projects">项目</button>
+          <button class="nav-item" data-view="ingest">写入 Context</button>
+        </nav>
+        <div class="sidebar-foot">
+          <span class="status-dot"></span><span id="healthText">正在连接</span>
+        </div>
+      </aside>
+
+      <main>
+        <header>
+          <div>
+            <p class="eyebrow">Evidence-backed context</p>
+            <h1 id="viewTitle">周报</h1>
+          </div>
+          <button class="secondary" id="refreshButton">刷新</button>
+        </header>
+
+        <section id="reportsView" class="view active">
+          <details class="panel usage-panel" open>
+            <summary>第一次使用</summary>
+            <div class="usage-grid">
+              <div>
+                <h2>1. 连接 Coding Agent</h2>
+                <p>
+                  <code>ctx connect all</code>。Codex 和 Claude Code 会把
+                  ContextLedger 作为 MCP 工具加载。
+                </p>
+              </div>
+              <div>
+                <h2>2. 保存工作</h2>
+                <p>
+                  在 Agent 里说“保存这项工作”，或运行
+                  <code>ctx capture "完成了..."</code>。
+                </p>
+              </div>
+              <div>
+                <h2>3. 生成周报</h2>
+                <p>直接使用下面的日期按钮，或运行 <code>ctx report</code>。</p>
+              </div>
+            </div>
+          </details>
+          <div class="panel report-generator">
+            <div>
+              <h2>生成周报</h2>
+              <p>
+                按自然日生成。每个结论会保留证据状态，因果证据不足时不会硬写成“因为”。
+              </p>
+            </div>
+            <div class="date-row">
+              <label>开始日期<input id="fromDate" type="date" /></label>
+              <label>结束日期<input id="toDate" type="date" /></label>
+              <label>时区<input id="timezone" value="Asia/Shanghai" /></label>
+              <label
+                >范围<select id="reportScope">
+                  <option value="user">我的工作</option>
+                  <option value="tenant">团队共享工作</option>
+                </select></label
+              >
+              <button class="primary" id="generateButton">生成</button>
+            </div>
+          </div>
+
+          <div class="content-grid">
+            <div class="panel list-panel">
+              <div class="panel-heading">
+                <h2>历史报告</h2>
+                <span id="reportCount" class="pill">0</span>
+              </div>
+              <div id="reportsList" class="item-list empty">还没有报告</div>
+            </div>
+            <div class="panel editor-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="editorTitle">报告编辑器</h2>
+                  <p id="editorMeta">选择或生成一份报告</p>
+                </div>
+                <button class="secondary hidden" id="copyButton">
+                  复制 Markdown
+                </button>
+              </div>
+              <div id="reportEditor" class="editor-empty">
+                报告正文会显示在这里。
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="projectsView" class="view">
+          <div class="content-grid projects-grid">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>项目</h2>
+                <span id="projectCount" class="pill">0</span>
+              </div>
+              <div id="projectsList" class="project-cards empty">
+                还没有项目
+              </div>
+            </div>
+            <form id="projectForm" class="panel form-panel">
+              <h2>新建项目</h2>
+              <label
+                >名称<input name="name" required placeholder="推理优化"
+              /></label>
+              <label
+                >标识<input
+                  name="slug"
+                  required
+                  placeholder="inference-runtime"
+                  pattern="[a-z0-9][a-z0-9-]*"
+              /></label>
+              <label
+                >匹配关键词<input name="keyword" placeholder="kv cache"
+              /></label>
+              <label
+                >仓库或路径<input
+                  name="repo"
+                  placeholder="github.com/company/runtime"
+              /></label>
+              <label
+                >说明<textarea name="description" rows="4"></textarea>
+              </label>
+              <button class="primary" type="submit">创建项目</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="ingestView" class="view">
+          <div class="content-grid ingest-grid">
+            <form id="ingestForm" class="panel form-panel">
+              <h2>写入一条工作记录</h2>
+              <label
+                >标题<input
+                  name="title"
+                  required
+                  placeholder="完成 prefix cache 实验"
+              /></label>
+              <label
+                >来源<select name="source">
+                  <option value="manual">手动</option>
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                  <option value="intenttrace">IntentTrace</option>
+                  <option value="experiment">实验</option>
+                  <option value="iwiki">iWiki</option>
+                </select></label
+              >
+              <label
+                >来源引用<input
+                  name="sourceRef"
+                  required
+                  placeholder="manual://weekly-note/2026-08-20"
+              /></label>
+              <label
+                >发生时间<input
+                  name="observedAt"
+                  type="datetime-local"
+                  required
+              /></label>
+              <label
+                >项目<select name="projectId" id="ingestProject">
+                  <option value="">自动分类</option>
+                </select></label
+              >
+              <label
+                >可见范围<select name="visibility">
+                  <option value="private">仅自己</option>
+                  <option value="project">团队周报</option>
+                  <option value="organization">组织共享</option>
+                </select></label
+              >
+              <label
+                >内容<textarea
+                  name="text"
+                  rows="6"
+                  required
+                  placeholder="做了什么、结果是什么、依据在哪里"
+                ></textarea>
+              </label>
+              <label
+                >工作结论<textarea
+                  name="claim"
+                  rows="3"
+                  placeholder="将会出现在周报中的一句话"
+                ></textarea>
+              </label>
+              <button class="primary" type="submit">写入</button>
+            </form>
+            <div class="panel helper-panel">
+              <h2>系统会检查什么</h2>
+              <ul>
+                <li>重复内容不会二次写入。</li>
+                <li>项目按仓库、路径和关键词归类。</li>
+                <li>每条结论会关联原始 context。</li>
+                <li>指标缺少定义或基线时，报告会提示补充。</li>
+                <li>用户编辑的报告块会保存新 revision。</li>
+              </ul>
+              <pre><code>context-ledger capture "完成了..."
+
+context-ledger report --since 7d</code></pre>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <dialog id="detailModal" class="detail-modal">
+      <div class="detail-modal-head">
+        <div>
+          <span id="detailTag" class="detail-tag"></span>
+          <h2 id="detailTitle">Technical detail</h2>
+        </div>
+        <button id="detailClose" class="secondary">关闭</button>
+      </div>
+      <div id="detailContent" class="block-content detail-content"></div>
+      <div class="detail-modal-actions">
+        <button id="detailEdit">编辑</button>
+        <button id="detailLock">编辑并锁定</button>
+      </div>
+    </dialog>
+    <div id="toast" class="toast"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

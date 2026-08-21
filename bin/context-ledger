@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT_DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+COMMAND="${1:-help}"
+if [[ $# -gt 0 ]]; then shift; fi
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
+case "$COMMAND" in
+  setup) exec "$ROOT_DIR/scripts/setup.sh" "$@" ;;
+  start) exec "$ROOT_DIR/scripts/start.sh" "$@" ;;
+  serve) exec "$ROOT_DIR/scripts/start.sh" --foreground "$@" ;;
+  stop) exec "$ROOT_DIR/scripts/stop.sh" "$@" ;;
+  doctor|status) exec "$ROOT_DIR/scripts/doctor.sh" "$@" ;;
+  connect) exec "$ROOT_DIR/scripts/connect.sh" "$@" ;;
+  migrate)
+    cd "$ROOT_DIR"
+    export CONTEXT_LEDGER_HOME="$ROOT_DIR"
+    exec npm run migrate -- "$@"
+    ;;
+  import-trace)
+    if [[ ! -f "$ROOT_DIR/dist/src/integrations/intenttrace/importer.js" ]]; then
+      CONTEXT_LEDGER_HOME="$ROOT_DIR" npm --prefix "$ROOT_DIR" run build >/dev/null
+    fi
+    cd "$ROOT_DIR"
+    export CONTEXT_LEDGER_HOME="$ROOT_DIR"
+    exec node dist/src/integrations/intenttrace/importer.js "$@"
+    ;;
+  configure)
+    cd "$ROOT_DIR"
+    export CONTEXT_LEDGER_HOME="$ROOT_DIR"
+    exec node dist/src/interfaces/cli/main.js configure "$@"
+    ;;
+  open)
+    exec "$ROOT_DIR/scripts/start.sh" "$@"
+    ;;
+  capture|save|report|weekly|reports|list|show|details|tags|detail|tag|delete|projects|whoami|ingest|team)
+    if [[ ! -f "$ROOT_DIR/dist/src/interfaces/cli/main.js" ]]; then
+      echo "ContextLedger is not built yet. Running setup..."
+      "$ROOT_DIR/scripts/setup.sh" --no-start
+    fi
+    if ! "$ROOT_DIR/scripts/local-db.sh" status >/dev/null 2>&1; then
+      "$ROOT_DIR/scripts/local-db.sh" start >/dev/null
+    fi
+    if [[ "${CONTEXT_LEDGER_RUN_MIGRATIONS:-true}" != "false" ]]; then
+      CONTEXT_LEDGER_HOME="$ROOT_DIR" npm --prefix "$ROOT_DIR" run migrate >/dev/null
+    fi
+    cd "$ROOT_DIR"
+    export CONTEXT_LEDGER_HOME="$ROOT_DIR"
+    exec node dist/src/interfaces/cli/main.js "$COMMAND" "$@"
+    ;;
+  help|-h|--help)
+    cat <<'EOF'
+ContextLedger
+
+`ctx` is a short alias for `context-ledger`.
+
+Commands:
+  context-ledger setup                  First-time local setup
+  context-ledger start [--no-open]      Start database and web UI
+  context-ledger serve                  Run the web UI in the foreground
+  context-ledger stop                   Stop the local PostgreSQL instance
+  context-ledger doctor                 Check installation and MCP connections
+  context-ledger status                 Alias for doctor
+  context-ledger connect codex          Connect Codex through MCP
+  context-ledger connect claude         Connect Claude Code through MCP
+  context-ledger connect all            Connect both agents
+  context-ledger capture "did work"      Save a quick work item
+  ctx save "did work"                  Short form of capture
+  context-ledger report                  Generate the last seven days
+  ctx weekly                           Short form of report
+  context-ledger reports                 List saved reports
+  context-ledger show [REPORT]           Print a report; defaults to latest
+  context-ledger details [REPORT]        List detail tags
+  ctx tags                             List tags on the latest report
+  context-ledger detail TAG              Read a detail from the latest report
+  ctx tag TAG                          Short form of detail
+  context-ledger delete REPORT           Delete a report
+  context-ledger open                    Open the web UI
+  context-ledger projects                List projects
+  context-ledger whoami                  Show the configured user and tenant
+  context-ledger configure ...           Point this install at a shared database
+  context-ledger team ...                Manage trusted shared-workspace users
+  context-ledger migrate                 Apply database migrations
+  context-ledger import-trace ...        Import Codex sessions through IntentTrace
+  context-ledger ingest FILE            Import a ContextLedger JSON envelope
+EOF
+    ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    exec "$0" help
+    ;;
+esac

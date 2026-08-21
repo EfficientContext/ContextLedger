@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: contextledger_admin
+      POSTGRES_PASSWORD: contextledger_admin
+      POSTGRES_DB: contextledger
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contextledger_admin -d contextledger"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - context-ledger-postgres:/var/lib/postgresql/data
+      - ./infra/initdb:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  context-ledger-postgres:

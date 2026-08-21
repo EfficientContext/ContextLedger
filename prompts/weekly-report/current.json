@@ -1,0 +1,5 @@
+{
+  "name": "weekly-report",
+  "version": "v10",
+  "entry": "prompts/weekly-report/v10/PROMPT.md"
+}

@@ -1,0 +1,41 @@
+[
+  {
+    "source": "experiment",
+    "sourceRef": "experiment://prefix-cache/2026-08-20",
+    "observedAt": "2026-08-20T08:00:00.000Z",
+    "title": "Prefix KV cache 实验",
+    "text": "对共享相同 token 前缀的请求启用了跨请求 prefix KV cache 复用。",
+    "projectHints": ["kv cache"],
+    "claims": [
+      {
+        "kind": "work",
+        "status": "confirmed",
+        "subject": "prefix KV cache reuse",
+        "predicate": "enabled",
+        "summary": "对共享相同 token 前缀的请求启用了跨请求 prefix KV cache 复用"
+      },
+      {
+        "kind": "metric",
+        "status": "stated",
+        "subject": "throughput",
+        "predicate": "increased",
+        "summary": "稳定阶段吞吐从 100 req/s 提升到 180 req/s",
+        "metric": {
+          "name": "throughput",
+          "definition": "稳定阶段每秒完成的请求数",
+          "value": 180,
+          "baselineValue": 100,
+          "unit": "req/s",
+          "comparisonMethod": "相同模型、输入长度和并发设置下的 A/B 实验"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "kind": "experiment",
+        "uri": "file:///path/to/experiment.json",
+        "title": "prefix cache A/B result"
+      }
+    ]
+  }
+]

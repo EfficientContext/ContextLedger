@@ -1,0 +1,13 @@
+.local/
+dist/
+node_modules/
+public/vendor/
+prompts/weekly-report/v1/
+prompts/weekly-report/v2/
+prompts/weekly-report/v3/
+prompts/weekly-report/v4/
+prompts/weekly-report/v5/
+prompts/weekly-report/v6/
+prompts/weekly-report/v7/
+prompts/weekly-report/v8/
+prompts/weekly-report/v9/

@@ -8,7 +8,7 @@ import { registerSystemCommands } from "./system-commands.js";
 
 const program = new Command()
   .name("context-ledger")
-  .description("Capture work and generate evidence-backed weekly reports.")
+  .description("Capture work and generate evidence-backed time-range reports.")
   .version("0.1.0");
 
 registerContextCommands(program);

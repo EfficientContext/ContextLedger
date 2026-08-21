@@ -45,7 +45,7 @@ case "$COMMAND" in
   open)
     exec "$ROOT_DIR/scripts/start.sh" "$@"
     ;;
-  capture|save|report|weekly|reports|list|show|details|tags|detail|tag|delete|projects|whoami|ingest|team)
+  capture|save|sync|report|weekly|reports|list|show|details|tags|detail|tag|delete|projects|whoami|ingest|team)
     if [[ ! -f "$ROOT_DIR/dist/src/interfaces/cli/main.js" ]]; then
       echo "ContextLedger is not built yet. Running setup..."
       "$ROOT_DIR/scripts/setup.sh" --no-start
@@ -78,6 +78,7 @@ Commands:
   context-ledger connect all            Connect both agents
   context-ledger capture "did work"      Save a quick work item
   ctx save "did work"                  Short form of capture
+  context-ledger sync                  Sync Codex/Claude sessions through IntentTrace
   context-ledger report                  Generate the last seven days
   ctx weekly                           Short form of report
   context-ledger reports                 List saved reports

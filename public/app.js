@@ -3,8 +3,11 @@ import { renderMarkdown } from "/markdown.js";
 const state = {
   reports: [],
   projects: [],
+  contexts: [],
+  currentContext: null,
   currentReport: null,
   currentDetail: null,
+  me: null,
 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -55,10 +58,16 @@ function setDefaultDates() {
   const format = (value) => value.toISOString().slice(0, 10);
   $("#fromDate").value = format(monday);
   $("#toDate").value = format(sunday);
+  $("#syncFromDate").value = format(monday);
+  $("#syncToDate").value = format(now);
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 16);
   document.querySelector('[name="observedAt"]').value = local;
+}
+
+async function loadMe() {
+  state.me = await api("/api/me");
 }
 
 async function loadHealth() {
@@ -76,14 +85,23 @@ async function loadProjects() {
   $("#projectCount").textContent = state.projects.length;
   const list = $("#projectsList");
   const select = $("#ingestProject");
-  select.innerHTML =
+  const projectOptions = state.projects
+    .map(
+      (project) =>
+        `<option value="${project.id}">${escapeHtml(project.name)}</option>`,
+    )
+    .join("");
+  select.innerHTML = '<option value="">自动分类</option>' + projectOptions;
+  $("#syncProject").innerHTML =
     '<option value="">自动分类</option>' +
     state.projects
       .map(
         (project) =>
-          `<option value="${project.id}">${escapeHtml(project.name)}</option>`,
+          `<option value="${escapeHtml(project.slug)}">${escapeHtml(project.name)}</option>`,
       )
       .join("");
+  $("#contextProjectFilter").innerHTML =
+    '<option value="">全部项目</option>' + projectOptions;
   if (!state.projects.length) {
     list.className = "project-cards empty";
     list.textContent = "还没有项目";
@@ -100,6 +118,389 @@ async function loadProjects() {
     </article>`,
     )
     .join("");
+}
+
+async function loadContexts() {
+  const params = new URLSearchParams({ limit: "200" });
+  const projectId = $("#contextProjectFilter")?.value;
+  const source = $("#contextSourceFilter")?.value;
+  if (projectId) params.set("projectId", projectId);
+  if (source) params.set("source", source);
+  state.contexts = await api(`/api/context?${params}`);
+  $("#contextCount").textContent = state.contexts.length;
+  const list = $("#contextsList");
+  if (!state.contexts.length) {
+    list.className = "context-list empty";
+    list.textContent = "这个筛选范围内还没有 Context。";
+    return;
+  }
+  list.className = "context-list";
+  list.innerHTML = state.contexts
+    .map(
+      (item) => `
+      <button class="context-item ${state.currentContext?.id === item.id ? "active" : ""}" data-context-id="${item.id}">
+        <div class="context-item-head">
+          <span class="source-badge ${item.agentSource || item.source}">${sourceLabel(item.source, item.agentSource)}</span>
+          <time>${formatObservedAt(item.observedAt)}</time>
+        </div>
+        <strong>${escapeHtml(item.title || "Untitled context")}</strong>
+        <p>${escapeHtml(item.summary || "No visible summary")}</p>
+        <small>${escapeHtml(item.projectName || "未分类")} · ${item.validationCount} 项验证 · ${item.intentNodeCount} 个 graph node</small>
+      </button>`,
+    )
+    .join("");
+  $$("[data-context-id]").forEach((button) =>
+    button.addEventListener("click", () =>
+      openContext(button.dataset.contextId),
+    ),
+  );
+}
+
+async function openContext(eventId) {
+  state.currentContext = await api(`/api/context/${eventId}`);
+  renderContextDetail();
+  await loadContexts();
+}
+
+function renderContextDetail() {
+  const root = $("#contextDetail");
+  const item = state.currentContext;
+  if (!item) {
+    root.className = "editor-empty";
+    root.textContent =
+      "选择一条 Context，查看 IntentTrace graph、claims、验证和参考文件。";
+    return;
+  }
+  const context = item.payload?.contextLedger || {};
+  const graph = context.intentGraph || { nodes: [], edges: [] };
+  const canEdit = item.actorUserId === state.me?.userId;
+  root.className = "";
+  root.innerHTML = `
+    <div class="context-detail-head">
+      <div>
+        <div class="context-detail-meta">
+          <span class="source-badge ${item.agentSource || item.source}">${sourceLabel(item.source, item.agentSource)}</span>
+          <span>${escapeHtml(item.projectName || "未分类")}</span>
+          <span>${formatObservedAt(item.observedAt)}</span>
+          <span>${visibilityLabel(item.visibility)}</span>
+          <span>revision ${item.revisionCount || 0}</span>
+        </div>
+        <h2>${escapeHtml(item.title || "Untitled context")}</h2>
+      </div>
+      ${canEdit ? '<button class="secondary" id="editContextButton">编辑 Context</button>' : ""}
+    </div>
+
+    ${context.userNote ? `<div class="user-note"><strong>用户修正</strong><p>${escapeHtml(context.userNote)}</p></div>` : ""}
+    <p class="context-narrative">${escapeHtml(context.narrative || item.text || "")}</p>
+
+    <section class="context-section">
+      <div class="section-title-row">
+        <h3>IntentTrace graph</h3>
+        <span>${graph.nodes?.length || 0} nodes · ${graph.edges?.length || 0} edges</span>
+      </div>
+      ${renderIntentGraph(graph)}
+    </section>
+
+    ${renderContextListSection("具体改动", context.details)}
+    ${renderContextListSection("设计决策", context.decisions)}
+    ${renderValidationSection(context.validations)}
+    ${renderClaimsSection(item.claims)}
+    ${renderContextListSection("限制", context.boundaries)}
+    ${renderMissingMaterialsSection(context.missingMaterials)}
+    ${renderArtifactsSection(item.artifacts, context.referencePaths)}
+    ${renderRevisionSection(item.revisions)}
+  `;
+  $("#editContextButton")?.addEventListener("click", editContext);
+}
+
+function renderContextListSection(title, values) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  return `
+    <section class="context-section">
+      <h3>${escapeHtml(title)}</h3>
+      <ul>${values.map((value) => `<li>${escapeHtml(value)}</li>`).join("")}</ul>
+    </section>`;
+}
+
+function renderValidationSection(values) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  return `
+    <section class="context-section">
+      <h3>Validation</h3>
+      <div class="validation-cards">
+        ${values
+          .map(
+            (row) => `
+          <article>
+            <code>${escapeHtml(row.command)}</code>
+            <strong>${escapeHtml(row.result)}</strong>
+            <p>${escapeHtml(row.meaning)}</p>
+          </article>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderClaimsSection(values) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  return `
+    <section class="context-section">
+      <h3>Claims</h3>
+      <div class="claim-list">
+        ${values
+          .map(
+            (claim) => `
+          <article>
+            <span>${escapeHtml(claim.kind)} · ${escapeHtml(claim.status)} · ${(claim.confidence * 100).toFixed(0)}%</span>
+            <p>${escapeHtml(claim.summary)}</p>
+          </article>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderMissingMaterialsSection(values) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  return `
+    <section class="context-section">
+      <h3>建议补充</h3>
+      <div class="missing-material-list">
+        ${values
+          .map(
+            (item) => `
+          <article class="${escapeHtml(item.severity || "suggested")}">
+            <span>${escapeHtml(item.severity === "blocking" ? "报告前最好补上" : "有的话更完整")}</span>
+            <p>${escapeHtml(item.label)}</p>
+          </article>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderArtifactsSection(artifacts, references) {
+  const collected = [
+    ...(Array.isArray(artifacts)
+      ? artifacts.map((artifact) => ({
+          label: artifact.title || artifact.uri || artifact.kind,
+          uri: artifact.uri,
+        }))
+      : []),
+    ...(Array.isArray(references)
+      ? references.map((reference) => ({ label: reference, uri: null }))
+      : []),
+  ];
+  const values = [
+    ...new Map(collected.map((value) => [value.label, value])).values(),
+  ];
+  if (!values.length) return "";
+  return `
+    <section class="context-section">
+      <h3>Artifacts and references</h3>
+      <ul class="reference-list">
+        ${values
+          .map((value) =>
+            value.uri && /^https?:/u.test(value.uri)
+              ? `<li><a href="${escapeHtml(value.uri)}" target="_blank" rel="noopener noreferrer">${escapeHtml(value.label)}</a></li>`
+              : `<li><code>${escapeHtml(value.label)}</code></li>`,
+          )
+          .join("")}
+      </ul>
+    </section>`;
+}
+
+function renderRevisionSection(revisions) {
+  if (!Array.isArray(revisions) || revisions.length === 0) return "";
+  return `
+    <section class="context-section">
+      <h3>修改记录</h3>
+      <div class="revision-list">
+        ${revisions
+          .map(
+            (revision) => `
+          <article>
+            <strong>revision ${revision.revision}</strong>
+            <span>${formatObservedAt(revision.createdAt)}</span>
+          </article>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderIntentGraph(graph) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  if (!nodes.length) {
+    return '<div class="graph-empty">这条记录没有 IntentTrace graph，可能是手动 capture。</div>';
+  }
+  const stage = {
+    request: 0,
+    issue: 1,
+    work: 2,
+    decision: 3,
+    result: 3,
+    blocker: 3,
+    follow_up: 4,
+  };
+  const lanes = new Map();
+  const positions = nodes.map((node, index) => {
+    const column = stage[node.kind] ?? Math.min(index, 4);
+    const row = lanes.get(column) || 0;
+    lanes.set(column, row + 1);
+    return {
+      ...node,
+      index,
+      x: 28 + column * 190,
+      y: 35 + row * 112,
+    };
+  });
+  const byTitle = new Map(positions.map((node) => [node.title, node]));
+  const width = Math.max(640, ...positions.map((node) => node.x + 170));
+  const height = Math.max(210, ...positions.map((node) => node.y + 82));
+  return `
+    <div class="intent-graph-wrap">
+      <svg class="intent-graph" viewBox="0 0 ${width} ${height}" role="img" aria-label="IntentTrace graph">
+        <defs>
+          <marker id="graphArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z"></path>
+          </marker>
+        </defs>
+        ${edges
+          .map((edge) => {
+            const source = byTitle.get(edge.source);
+            const target = byTitle.get(edge.target);
+            if (!source || !target) return "";
+            return `<path class="graph-edge" d="M${source.x + 150},${source.y + 34} C${source.x + 170},${source.y + 34} ${target.x - 20},${target.y + 34} ${target.x},${target.y + 34}" marker-end="url(#graphArrow)"><title>${escapeHtml(edge.kind)} · ${escapeHtml(edge.provenance)}</title></path>`;
+          })
+          .join("")}
+        ${positions
+          .map(
+            (node) => `
+          <g class="graph-node ${escapeHtml(node.kind)}" transform="translate(${node.x},${node.y})">
+            <rect width="150" height="68" rx="10"></rect>
+            <text class="graph-node-kind" x="12" y="18">${escapeHtml(node.kind)}</text>
+            ${svgText(node.title, 12, 37, 20)}
+            <title>${escapeHtml((node.claims || []).join(" · "))}</title>
+          </g>`,
+          )
+          .join("")}
+      </svg>
+    </div>`;
+}
+
+function svgText(value, x, y, maxChars) {
+  const words = String(value || "").split(/\s+/u);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    if (`${line} ${word}`.trim().length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = `${line} ${word}`.trim();
+    }
+  }
+  if (line) lines.push(line);
+  return lines
+    .slice(0, 2)
+    .map(
+      (text, index) =>
+        `<text class="graph-node-title" x="${x}" y="${y + index * 16}">${escapeHtml(text)}</text>`,
+    )
+    .join("");
+}
+
+function editContext() {
+  const item = state.currentContext;
+  const context = item.payload?.contextLedger || {};
+  const root = $("#contextDetail");
+  root.innerHTML = `
+    <form id="contextEditForm" class="context-edit-form">
+      <div class="context-detail-head">
+        <div><p class="eyebrow">Edit context revision</p><h2>${escapeHtml(item.title || "Untitled context")}</h2></div>
+        <button type="button" class="secondary" id="cancelContextEdit">取消</button>
+      </div>
+      <label>标题<input name="title" value="${escapeHtml(item.title || "")}" /></label>
+      <label>项目<select name="projectId">
+        <option value="">未分类</option>
+        ${state.projects
+          .map(
+            (project) =>
+              `<option value="${project.id}" ${project.id === item.projectId ? "selected" : ""}>${escapeHtml(project.name)}</option>`,
+          )
+          .join("")}
+      </select></label>
+      <label>可见范围<select name="visibility">
+        ${["private", "project", "organization"]
+          .map(
+            (value) =>
+              `<option value="${value}" ${value === item.visibility ? "selected" : ""}>${visibilityLabel(value)}</option>`,
+          )
+          .join("")}
+      </select></label>
+      <label>给下一份报告的修正说明<textarea name="userNote" rows="5" placeholder="例如：这里的 23 passed 只验证实现正确，不代表性能提升。">${escapeHtml(context.userNote || "")}</textarea><small>新生成的报告会优先读取这段说明。</small></label>
+      <label>页面正文<textarea name="text" rows="10">${escapeHtml(item.text || "")}</textarea></label>
+      <div class="form-submit-row"><button class="primary" type="submit">保存修改</button></div>
+    </form>`;
+  $("#cancelContextEdit").addEventListener("click", renderContextDetail);
+  $("#contextEditForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await api(`/api/context/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: form.get("title") || null,
+        text: form.get("text") || null,
+        userNote: form.get("userNote") || null,
+        projectId: form.get("projectId") || null,
+        visibility: form.get("visibility"),
+      }),
+    });
+    toast("Context revision 已保存");
+    await openContext(item.id);
+    await Promise.all([loadProjects(), loadReports()]);
+  });
+}
+
+function sourceLabel(source, agentSource) {
+  if (source === "intenttrace" && agentSource) {
+    return `IntentTrace · ${agentSource.toLowerCase().includes("claude") ? "Claude Code" : "Codex"}`;
+  }
+  return (
+    {
+      intenttrace: "IntentTrace",
+      codex: "Codex",
+      claude: "Claude",
+      manual: "Manual",
+      mcp: "MCP",
+      experiment: "Experiment",
+      git: "Git",
+      iwiki: "iWiki",
+    }[source] || source
+  );
+}
+
+function visibilityLabel(value) {
+  return (
+    {
+      private: "仅自己",
+      project: "团队共享",
+      organization: "组织共享",
+    }[value] || value
+  );
+}
+
+function formatObservedAt(value) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 async function loadReports() {
@@ -176,7 +577,7 @@ function renderEditor() {
   if (!state.currentReport) return;
   if (!state.currentReport.blocks.length) {
     editor.className = "editor-empty";
-    editor.textContent = "这个时间范围内还没有可写入周报的结论。";
+    editor.textContent = "这个时间范围内还没有可写入报告的结论。";
     return;
   }
   editor.className = "";
@@ -313,6 +714,46 @@ $("#generateButton").addEventListener("click", async () => {
   await openReport(result.id);
 });
 
+$("#syncButton").addEventListener("click", async () => {
+  const fromDate = $("#syncFromDate").value;
+  const toDate = $("#syncToDate").value;
+  if (!fromDate || !toDate) return toast("请先选择同步日期");
+
+  const button = $("#syncButton");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "正在整理 session...";
+  try {
+    const result = await api("/api/context/sync", {
+      method: "POST",
+      body: JSON.stringify({
+        source: $("#syncSource").value,
+        fromDate,
+        toDate,
+        timezone: $("#timezone").value,
+        projectSlug: $("#syncProject").value || undefined,
+        visibility: $("#syncVisibility").value,
+      }),
+    });
+    await Promise.all([loadProjects(), loadReports()]);
+    await loadContexts();
+    const failed = result.failed?.length
+      ? `，${result.failed.length} 条没能解析`
+      : "";
+    toast(
+      `同步完成：新增 ${result.imported} 条，跳过 ${result.duplicates} 条重复${failed}`,
+    );
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "同步失败");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
+
+$("#contextProjectFilter").addEventListener("change", loadContexts);
+$("#contextSourceFilter").addEventListener("change", loadContexts);
+
 $("#copyButton").addEventListener("click", async () => {
   await navigator.clipboard.writeText(state.currentReport.markdown);
   toast("Markdown 已复制");
@@ -376,6 +817,7 @@ $("#ingestForm").addEventListener("submit", async (event) => {
   event.currentTarget.reset();
   setDefaultDates();
   await loadProjects();
+  await loadContexts();
 });
 
 $$(".nav-item").forEach((button) =>
@@ -387,7 +829,8 @@ $$(".nav-item").forEach((button) =>
       view.classList.toggle("active", view.id === `${button.dataset.view}View`),
     );
     $("#viewTitle").textContent = {
-      reports: "周报",
+      reports: "报告",
+      contexts: "Context",
       projects: "项目",
       ingest: "写入 Context",
     }[button.dataset.view];
@@ -395,9 +838,11 @@ $$(".nav-item").forEach((button) =>
 );
 
 $("#refreshButton").addEventListener("click", async () => {
-  await Promise.all([loadHealth(), loadProjects(), loadReports()]);
+  await Promise.all([loadMe(), loadHealth(), loadProjects(), loadReports()]);
+  await loadContexts();
   toast("已刷新");
 });
 
 setDefaultDates();
-await Promise.all([loadHealth(), loadProjects(), loadReports()]);
+await Promise.all([loadMe(), loadHealth(), loadProjects(), loadReports()]);
+await loadContexts();

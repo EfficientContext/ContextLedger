@@ -1,0 +1,5 @@
+{
+  "name": "range-report",
+  "version": "v1",
+  "entry": "prompts/range-report/v1/PROMPT.md"
+}

@@ -21,7 +21,7 @@ import {
 import type { ReportTraceContext } from "../domain/types.js";
 
 const PromptManifestSchema = z.object({
-  name: z.literal("weekly-report"),
+  name: z.literal("range-report"),
   version: z.string().min(1),
   entry: z.string().min(1),
 });
@@ -264,7 +264,7 @@ export async function rewriteReportBlocks(
   }
 
   const root = loadConfig().CONTEXT_LEDGER_HOME;
-  const manifestPath = join(root, "prompts", "weekly-report", "current.json");
+  const manifestPath = join(root, "prompts", "range-report", "current.json");
   const manifest = PromptManifestSchema.parse(
     JSON.parse(await readFile(manifestPath, "utf8")),
   );
@@ -374,6 +374,7 @@ export async function rewriteReportBlocks(
                 })),
                 localEvidence: trace.autoEvidence,
                 limitations: trace.boundaries,
+                userNote: trace.userNote ?? null,
                 technicalFacts: trace.technicalFacts,
                 evidenceTables: trace.evidenceTables,
                 referencePaths: trace.referencePaths,
@@ -475,7 +476,7 @@ export async function rewriteReportBlocks(
       .filter(Boolean)
       .join(", ");
     throw new Error(
-      `Weekly report skill pipeline failed${processStatus ? ` (${processStatus})` : ""}: ${
+      `Range report skill pipeline failed${processStatus ? ` (${processStatus})` : ""}: ${
         detail || failure.message || String(error)
       }`,
     );
@@ -508,7 +509,7 @@ export async function rewriteReportBlocks(
     [...expected].some((key) => !rewritten.has(key))
   ) {
     throw new Error(
-      "Weekly report skill pipeline returned missing or duplicate report blocks",
+      "Range report skill pipeline returned missing or duplicate report blocks",
     );
   }
   const finalContent = new Map<string, string>();
@@ -639,7 +640,7 @@ function validateRewrittenBlock(
       )
     ) {
       throw new Error(
-        `Weekly report output contains banned audit prose: ${phrase}`,
+        `Range report output contains banned audit prose: ${phrase}`,
       );
     }
   }
@@ -651,62 +652,62 @@ function validateRewrittenBlock(
       allOutput,
     )
   ) {
-    throw new Error("Weekly report output contains a trace-like UUID");
+    throw new Error("Range report output contains a trace-like UUID");
   }
   if (
     allOutput.includes("#### References") ||
     allOutput.includes("#### 参考代码和数据")
   ) {
     throw new Error(
-      "Weekly report writer must not generate the reference section",
+      "Range report writer must not generate the reference section",
     );
   }
   if (/\[(?:System|系统)[^\]]+\]/u.test(allOutput)) {
-    throw new Error("Weekly report output contains a system placeholder");
+    throw new Error("Range report output contains a system placeholder");
   }
   if (!/^\s*-\s+/mu.test(content)) {
-    throw new Error("Weekly report summary must use bullet points");
+    throw new Error("Range report summary must use bullet points");
   }
   if (content.includes("| ---") || content.includes("|---")) {
-    throw new Error("Weekly report summary must not contain Markdown tables");
+    throw new Error("Range report summary must not contain Markdown tables");
   }
   if (content.split(/\s+/u).filter(Boolean).length > 350) {
-    throw new Error("Weekly report summary exceeds 350 words");
+    throw new Error("Range report summary exceeds 350 words");
   }
   const risksSection =
     /#### Risks and next steps\s*\n([\s\S]*)$/u.exec(content)?.[1] ?? "";
   const riskCount = risksSection.match(/^\s*-\s+/gmu)?.length ?? 0;
   if (riskCount > 3) {
     throw new Error(
-      "Weekly report summary contains more than three risk bullets",
+      "Range report summary contains more than three risk bullets",
     );
   }
   if (details.length !== requirements.workItems.length) {
     throw new Error(
-      `Weekly report output has ${details.length} details for ${requirements.workItems.length} IntentTrace work items`,
+      `Range report output has ${details.length} details for ${requirements.workItems.length} IntentTrace work items`,
     );
   }
   const detailsByTag = new Map(details.map((detail) => [detail.tag, detail]));
   if (detailsByTag.size !== details.length) {
-    throw new Error("Weekly report output contains duplicate detail tags");
+    throw new Error("Range report output contains duplicate detail tags");
   }
   for (const workItem of requirements.workItems) {
     const tagMarker = `[[detail:${workItem.tag}]]`;
     const tagCount = content.split(tagMarker).length - 1;
     if (tagCount !== 1) {
       throw new Error(
-        `Weekly report summary has ${tagCount} links for detail tag ${workItem.tag}`,
+        `Range report summary has ${tagCount} links for detail tag ${workItem.tag}`,
       );
     }
     const detail = detailsByTag.get(workItem.tag);
     if (!detail) {
       throw new Error(
-        `Weekly report output omitted detail tag: ${workItem.tag}`,
+        `Range report output omitted detail tag: ${workItem.tag}`,
       );
     }
     if (/[\u3400-\u9fff]/u.test(detail.title)) {
       throw new Error(
-        `Weekly report detail title is not English for tag: ${workItem.tag}`,
+        `Range report detail title is not English for tag: ${workItem.tag}`,
       );
     }
     const labels = [
@@ -725,12 +726,12 @@ function validateRewrittenBlock(
       const index = detail.content.search(label.pattern);
       if (index < 0) {
         throw new Error(
-          `Weekly report detail ${workItem.tag} is missing ${label.name}`,
+          `Range report detail ${workItem.tag} is missing ${label.name}`,
         );
       }
       if (index < previousIndex) {
         throw new Error(
-          `Weekly report detail ${workItem.tag} has sections out of order`,
+          `Range report detail ${workItem.tag} has sections out of order`,
         );
       }
       previousIndex = index;
@@ -747,14 +748,14 @@ function validateRewrittenBlock(
       );
       if (!present) {
         throw new Error(
-          `Weekly report detail ${workItem.tag} dropped protected span: ${span}`,
+          `Range report detail ${workItem.tag} dropped protected span: ${span}`,
         );
       }
     }
     for (const title of workItem.tableTitles) {
       if (!detail.content.includes(title)) {
         throw new Error(
-          `Weekly report detail ${workItem.tag} omitted evidence table: ${title}`,
+          `Range report detail ${workItem.tag} omitted evidence table: ${title}`,
         );
       }
     }
@@ -767,7 +768,7 @@ function validateRewrittenBlock(
     )
   ) {
     throw new Error(
-      "Weekly report output does not state that retry flags are aliases",
+      "Range report output does not state that retry flags are aliases",
     );
   }
 }

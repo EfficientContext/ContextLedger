@@ -193,6 +193,7 @@ export type ReportTraceContext = {
       provenance: string;
     }>;
   };
+  userNote?: string | null | undefined;
 };
 
 export const ReportTraceContextSchema = z.object({
@@ -293,6 +294,7 @@ export const ReportTraceContextSchema = z.object({
       }),
     ),
   }),
+  userNote: z.string().nullable().optional(),
 });
 
 export type ReportClaim = {

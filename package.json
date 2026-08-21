@@ -7,7 +7,7 @@
     "ctx": "bin/context-ledger"
   },
   "type": "module",
-  "description": "Evidence-backed work context and weekly reports for coding agents.",
+  "description": "Evidence-backed work context and time-range reports for coding agents.",
   "engines": {
     "node": ">=22"
   },
@@ -29,7 +29,7 @@
     "cli": "tsx src/interfaces/cli/main.ts",
     "mcp": "tsx src/interfaces/mcp/server.ts",
     "intenttrace:import": "tsx src/integrations/intenttrace/importer.ts",
-    "prompt:show": "node -e \"const fs=require('node:fs'); const manifest=JSON.parse(fs.readFileSync('prompts/weekly-report/current.json','utf8')); console.log(JSON.stringify(manifest,null,2)); console.log(fs.readFileSync(manifest.entry,'utf8'))\"",
+    "prompt:show": "node -e \"const fs=require('node:fs'); const manifest=JSON.parse(fs.readFileSync('prompts/range-report/current.json','utf8')); console.log(JSON.stringify(manifest,null,2)); console.log(fs.readFileSync(manifest.entry,'utf8'))\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "architecture:check": "node scripts/checks/architecture.mjs && node scripts/checks/no-local-paths.mjs"

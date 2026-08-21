@@ -17,7 +17,8 @@
           </div>
         </div>
         <nav>
-          <button class="nav-item active" data-view="reports">周报</button>
+          <button class="nav-item active" data-view="reports">报告</button>
+          <button class="nav-item" data-view="contexts">Context</button>
           <button class="nav-item" data-view="projects">项目</button>
           <button class="nav-item" data-view="ingest">写入 Context</button>
         </nav>
@@ -30,7 +31,7 @@
         <header>
           <div>
             <p class="eyebrow">Evidence-backed context</p>
-            <h1 id="viewTitle">周报</h1>
+            <h1 id="viewTitle">报告</h1>
           </div>
           <button class="secondary" id="refreshButton">刷新</button>
         </header>
@@ -54,14 +55,14 @@
                 </p>
               </div>
               <div>
-                <h2>3. 生成周报</h2>
+                <h2>3. 生成报告</h2>
                 <p>直接使用下面的日期按钮，或运行 <code>ctx report</code>。</p>
               </div>
             </div>
           </details>
           <div class="panel report-generator">
             <div>
-              <h2>生成周报</h2>
+              <h2>生成报告</h2>
               <p>
                 按自然日生成。每个结论会保留证据状态，因果证据不足时不会硬写成“因为”。
               </p>
@@ -100,6 +101,79 @@
               </div>
               <div id="reportEditor" class="editor-empty">
                 报告正文会显示在这里。
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="contextsView" class="view">
+          <div class="panel sync-panel">
+            <div>
+              <p class="eyebrow">IntentTrace session sync</p>
+              <h2>同步 Codex / Claude Code</h2>
+              <p>
+                选好日期再点同步。ContextLedger 会通过 IntentTrace 整理这些
+                session，不会把隐藏推理和加密内容写进数据库。
+              </p>
+            </div>
+            <div class="sync-controls">
+              <label
+                >来源<select id="syncSource">
+                  <option value="all">Codex + Claude</option>
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                </select></label
+              >
+              <label>开始日期<input id="syncFromDate" type="date" /></label>
+              <label>结束日期<input id="syncToDate" type="date" /></label>
+              <label
+                >项目<select id="syncProject">
+                  <option value="">自动分类</option>
+                </select></label
+              >
+              <label
+                >可见范围<select id="syncVisibility">
+                  <option value="private">仅自己</option>
+                  <option value="project">团队共享</option>
+                  <option value="organization">组织共享</option>
+                </select></label
+              >
+              <button class="primary" id="syncButton">开始同步</button>
+            </div>
+          </div>
+
+          <div class="content-grid context-grid">
+            <div class="panel list-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Context 时间线</h2>
+                  <p>来自 IntentTrace、Agent capture、实验和手动记录。</p>
+                </div>
+                <span id="contextCount" class="pill">0</span>
+              </div>
+              <div class="context-filters">
+                <select id="contextProjectFilter">
+                  <option value="">全部项目</option>
+                </select>
+                <select id="contextSourceFilter">
+                  <option value="">全部来源</option>
+                  <option value="intenttrace">IntentTrace</option>
+                  <option value="manual">手动</option>
+                  <option value="mcp">MCP capture</option>
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude</option>
+                  <option value="experiment">实验</option>
+                </select>
+              </div>
+              <div id="contextsList" class="context-list empty">
+                还没有 Context。可以先同步 Agent session。
+              </div>
+            </div>
+            <div class="panel context-detail-panel">
+              <div id="contextDetail" class="editor-empty">
+                选择一条 Context，查看 IntentTrace
+                graph、结论、验证和参考文件。自己的 Context
+                可以直接修改，下一次生成报告时会读取你的修正。
               </div>
             </div>
           </div>
@@ -168,7 +242,7 @@
                 >来源引用<input
                   name="sourceRef"
                   required
-                  placeholder="manual://weekly-note/2026-08-20"
+                  placeholder="manual://report-note/2026-08-20"
               /></label>
               <label
                 >发生时间<input
@@ -184,7 +258,7 @@
               <label
                 >可见范围<select name="visibility">
                   <option value="private">仅自己</option>
-                  <option value="project">团队周报</option>
+                  <option value="project">团队报告</option>
                   <option value="organization">组织共享</option>
                 </select></label
               >
@@ -200,7 +274,7 @@
                 >工作结论<textarea
                   name="claim"
                   rows="3"
-                  placeholder="将会出现在周报中的一句话"
+                  placeholder="将会出现在报告中的一句话"
                 ></textarea>
               </label>
               <button class="primary" type="submit">写入</button>

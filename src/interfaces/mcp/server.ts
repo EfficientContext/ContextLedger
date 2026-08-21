@@ -21,12 +21,13 @@ import {
 } from "../../application/report-service.js";
 import { parseTimeRange } from "../../domain/time.js";
 import { IngestInputSchema } from "../../domain/types.js";
+import { syncSessions } from "../../integrations/intenttrace/session-sync-service.js";
 
 const server = new McpServer(
   { name: "context-ledger", version: "0.1.0" },
   {
     instructions:
-      "Use context_capture after meaningful work, decisions, measurements, blockers, or validated results. Include concrete evidence already available in the current coding session. Keep visibility private unless the user asks to share the item with the team; then set visibility to project. context_generate_report defaults to seven days. Use context_get_report for the concise report and context_get_report_detail only when technical detail is needed.",
+      "Use context_sync_sessions when the user wants to recover past Codex or Claude Code work from an explicit time range. Use context_capture after meaningful work in the current session, including concrete evidence already available. Keep visibility private unless the user asks to share the item with the team; then set visibility to project. context_generate_report accepts any time range and defaults to seven days. Read context_get_report first, then open only the needed tags with context_get_report_detail.",
   },
 );
 
@@ -74,7 +75,7 @@ server.registerTool(
   "context_delete_report",
   {
     description:
-      "Delete one weekly report and its details. Use only after explicit user confirmation.",
+      "Delete one time-range report and its details. Use only after explicit user confirmation.",
     inputSchema: {
       reportId: z.string().uuid(),
     },
@@ -162,10 +163,64 @@ server.registerTool(
 );
 
 server.registerTool(
+  "context_sync_sessions",
+  {
+    description:
+      "Discover and import Codex and Claude Code sessions through IntentTrace. Defaults to the last seven days and keeps imported context private unless visibility is project or organization.",
+    inputSchema: {
+      source: z.enum(["codex", "claude", "all"]).default("all"),
+      from: z.string().optional().describe("First calendar date, YYYY-MM-DD"),
+      to: z.string().optional().describe("Last calendar date, YYYY-MM-DD"),
+      since: z.string().optional().describe("Relative duration such as 7d"),
+      timezone: z.string().optional(),
+      projectSlug: z.string().optional(),
+      visibility: z
+        .enum(["private", "project", "organization"])
+        .default("private"),
+      maxFiles: z.number().int().min(1).max(1000).default(200),
+      dryRun: z.boolean().default(false),
+    },
+  },
+  async ({
+    source,
+    from,
+    to,
+    since,
+    timezone: requestedTimezone,
+    projectSlug,
+    visibility,
+    maxFiles,
+    dryRun,
+  }) => {
+    const identity = await resolveDefaultIdentity();
+    const timezone = requestedTimezone ?? identity.timezone;
+    const range = parseTimeRange({
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(since ? { since } : !from && !to ? { since: "7d" } : {}),
+      timezone,
+    });
+    const result = await withIdentity(identity, (client) =>
+      syncSessions(client, identity, {
+        source,
+        ...range,
+        ...(projectSlug ? { projectSlug } : {}),
+        visibility,
+        maxFiles,
+        dryRun,
+      }),
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+);
+
+server.registerTool(
   "context_generate_report",
   {
     description:
-      "Generate a weekly report for a calendar range or relative duration.",
+      "Generate a report for any calendar range or relative duration.",
     inputSchema: {
       from: z.string().optional().describe("First calendar date, YYYY-MM-DD"),
       to: z.string().optional().describe("Last calendar date, YYYY-MM-DD"),
@@ -218,7 +273,7 @@ server.registerTool(
   "context_list_reports",
   {
     description:
-      "List weekly reports with IDs that can be used to inspect summaries and detail tags.",
+      "List reports with IDs that can be used to inspect summaries and detail tags.",
     inputSchema: {},
   },
   async () => {
@@ -236,7 +291,7 @@ server.registerTool(
   "context_get_report",
   {
     description:
-      "Read a generated weekly-report summary and its available detail tags.",
+      "Read a generated report summary and its available detail tags.",
     inputSchema: {
       reportId: z
         .string()
@@ -291,13 +346,14 @@ server.registerTool(
 );
 
 server.registerResource(
-  "weekly-report",
+  "range-report",
   new ResourceTemplate("context-ledger://reports/{reportId}", {
     list: undefined,
   }),
   {
-    title: "ContextLedger weekly report",
-    description: "Concise weekly-report summary with discoverable detail tags",
+    title: "ContextLedger range report",
+    description:
+      "Concise time-range report summary with discoverable detail tags",
     mimeType: "application/json",
   },
   async (_uri, variables) => {
@@ -321,12 +377,12 @@ server.registerResource(
 );
 
 server.registerResource(
-  "weekly-report-detail",
+  "range-report-detail",
   new ResourceTemplate("context-ledger://reports/{reportId}/details/{tag}", {
     list: undefined,
   }),
   {
-    title: "ContextLedger weekly-report detail",
+    title: "ContextLedger range-report detail",
     description: "Technical detail addressed by a stable report tag",
     mimeType: "application/json",
   },

@@ -88,7 +88,7 @@ export function registerReportCommands(program: Command): void {
         return;
       }
       if (reports.length === 0) {
-        process.stdout.write("No reports yet. Run: ctx weekly\n");
+        process.stdout.write("No reports yet. Run: ctx report --since 7d\n");
         return;
       }
       for (const report of reports) {

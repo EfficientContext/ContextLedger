@@ -55,7 +55,7 @@ Private capture remains the default.
 ## 5. Generate and read a team report
 
 ```bash
-ctx weekly --team
+ctx report --since 7d --team
 ctx reports
 ctx show latest
 ctx tags

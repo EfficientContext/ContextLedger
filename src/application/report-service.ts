@@ -191,8 +191,7 @@ export async function generateReport(
     scope,
   );
   const labels = formatTimeRangeLabel(input.from, input.to, input.timezone);
-  const title =
-    input.title ?? `Weekly Report: ${labels.fromDate} to ${labels.toDate}`;
+  const title = input.title ?? `Report: ${labels.fromDate} to ${labels.toDate}`;
   const draftBlocks = compileReportBlocks(claims, edges, traceContexts);
   const rewritten = await rewriteReportBlocks(
     draftBlocks,

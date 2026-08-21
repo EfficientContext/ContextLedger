@@ -95,6 +95,8 @@ if (( INSTALL_SKILLS )); then
   "$ROOT_DIR/scripts/install-writer-skills.sh"
 fi
 
+"$ROOT_DIR/scripts/install-intenttrace.sh"
+
 CONTEXT_LEDGER_HOME="$ROOT_DIR" npm --prefix "$ROOT_DIR" run build
 
 if [[ -n "$DATABASE_URL_ARG" || -n "$TENANT_ARG" || -n "$EMAIL_ARG" || -n "$DB_MODE_ARG" ]]; then

@@ -20,6 +20,11 @@ import {
   ingestContext,
 } from "../../application/context-service.js";
 import {
+  editContextEntry,
+  getContextEntry,
+  listContextEntries,
+} from "../../application/context-query-service.js";
+import {
   createProject,
   listProjects,
 } from "../../application/project-service.js";
@@ -33,6 +38,7 @@ import {
   listReportDetails,
   listReports,
 } from "../../application/report-service.js";
+import { syncSessions } from "../../integrations/intenttrace/session-sync-service.js";
 
 const config = loadConfig();
 const app = Fastify({ logger: true });
@@ -134,6 +140,106 @@ app.post("/api/context/ingest", async (request, reply) => {
     ingestContext(client, identity, body),
   );
   return reply.code(result.inserted ? 201 : 200).send(result);
+});
+
+app.get("/api/context", async (request) => {
+  const identity = identityFromRequest(request);
+  const query = z
+    .object({
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      projectId: z.string().uuid().optional(),
+      source: z
+        .enum([
+          "intenttrace",
+          "codex",
+          "claude",
+          "git",
+          "iwiki",
+          "experiment",
+          "manual",
+          "mcp",
+        ])
+        .optional(),
+      limit: z.coerce.number().int().min(1).max(500).default(100),
+    })
+    .parse(request.query);
+  return withIdentity(identity, (client) =>
+    listContextEntries(client, identity, query),
+  );
+});
+
+app.get("/api/context/:eventId", async (request, reply) => {
+  const identity = identityFromRequest(request);
+  const params = z.object({ eventId: z.string().uuid() }).parse(request.params);
+  const result = await withIdentity(identity, (client) =>
+    getContextEntry(client, identity, params.eventId),
+  );
+  if (!result) return reply.code(404).send({ error: "not_found" });
+  return result;
+});
+
+app.patch("/api/context/:eventId", async (request, reply) => {
+  const identity = identityFromRequest(request);
+  const params = z.object({ eventId: z.string().uuid() }).parse(request.params);
+  const body = z
+    .object({
+      title: z.string().nullable().optional(),
+      text: z.string().nullable().optional(),
+      userNote: z.string().nullable().optional(),
+      projectId: z.string().uuid().nullable().optional(),
+      visibility: z.enum(["private", "project", "organization"]).optional(),
+    })
+    .parse(request.body);
+  const result = await withIdentity(identity, (client) =>
+    editContextEntry(client, identity, params.eventId, body),
+  );
+  if (!result) return reply.code(404).send({ error: "not_found" });
+  return result;
+});
+
+app.post("/api/context/sync", async (request) => {
+  const identity = identityFromRequest(request);
+  const body = z
+    .object({
+      source: z.enum(["codex", "claude", "all"]).default("all"),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      fromDate: z.string().date().optional(),
+      toDate: z.string().date().optional(),
+      since: z.string().optional(),
+      timezone: z.string().default(defaultIdentity.timezone),
+      projectSlug: z.string().optional(),
+      visibility: z
+        .enum(["private", "project", "organization"])
+        .default("private"),
+      roots: z.array(z.string()).optional(),
+      maxFiles: z.number().int().min(1).max(1000).default(200),
+      dryRun: z.boolean().default(false),
+    })
+    .parse(request.body);
+  const range =
+    body.from && body.to
+      ? { from: body.from, to: body.to }
+      : parseTimeRange({
+          ...(body.fromDate ? { from: body.fromDate } : {}),
+          ...(body.toDate ? { to: body.toDate } : {}),
+          ...(!body.fromDate && !body.toDate
+            ? { since: body.since ?? "7d" }
+            : {}),
+          timezone: body.timezone,
+        });
+  return withIdentity(identity, (client) =>
+    syncSessions(client, identity, {
+      source: body.source,
+      ...range,
+      ...(body.projectSlug ? { projectSlug: body.projectSlug } : {}),
+      visibility: body.visibility,
+      roots: body.roots,
+      maxFiles: body.maxFiles,
+      dryRun: body.dryRun,
+    }),
+  );
 });
 
 app.patch("/api/context/:eventId/project", async (request, reply) => {

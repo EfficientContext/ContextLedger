@@ -82,6 +82,14 @@ for skill in research-writing-skill scientific-toolkit-skill shuorenhua; do
   fi
 done
 
+intenttrace_repo="${INTENTTRACE_REPO:-$ROOT_DIR/.local/intenttrace}"
+if [[ -f "$intenttrace_repo/packages/adapters/dist/index.js" ]] &&
+  [[ -f "$intenttrace_repo/packages/intent-reducer/dist/index.js" ]]; then
+  pass "IntentTrace integration is ready: $intenttrace_repo"
+else
+  fail "IntentTrace is missing or not built; run scripts/install-intenttrace.sh"
+fi
+
 writer=""
 for candidate in tclaude claude tcodex codex; do
   if command -v "$candidate" >/dev/null 2>&1; then

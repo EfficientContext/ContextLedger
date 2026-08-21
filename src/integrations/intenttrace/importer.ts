@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import {
@@ -17,68 +17,24 @@ import type {
   MissingEvidence,
   ReportTraceContext,
 } from "../../domain/types.js";
+import {
+  loadIntentTraceRuntime,
+  resolveIntentTraceRepository,
+  type IntentTraceRuntime,
+  type PreparedIntentTraceBundle as PreparedBundle,
+  type RawIntentTraceEvent as RawEvent,
+} from "./runtime.js";
 
-const DEFAULT_INTENTTRACE_REPO = process.env.INTENTTRACE_REPO ?? "";
+const DEFAULT_INTENTTRACE_REPO = resolveIntentTraceRepository();
 const execFileAsync = promisify(execFile);
 
-type RawEvent = {
-  schemaVersion: string;
-  traceId: string;
-  occurredAt: string;
-  kind: string;
-  name: string;
-  status: string;
-  agentId?: string;
-  spanId?: string;
-  parentSpanId?: string;
-  artifactRefs: string[];
-  attributes: Record<string, unknown>;
-  source: {
-    kind: string;
-    adapterVersion: string;
-    sourceEventId: string;
-  };
-  payload?: unknown;
-};
-
 type EventWithId = RawEvent & { eventId: string; ingestSeq: string };
-
-type PreparedBundle = {
-  contentSha256: string;
-  aggregateContentSha256: string;
-  descriptor: Record<string, unknown>;
-  warnings: Array<{ code: string; message: string }>;
-  events: Array<{ event: RawEvent }>;
-};
 
 type SessionIdentity = {
   threadId: string;
   rootSessionId: string;
   parentThreadId: string | null;
   historyMode: string;
-};
-
-type IntentTraceRuntime = {
-  prepareSessionParts: (
-    source: "codex",
-    parts: Array<{ path: string; bytes: Uint8Array }>,
-    sourceIdentity: string,
-    meta: { id: string; byteLength: number; modifiedAt: string },
-  ) => Promise<PreparedBundle[]>;
-  stableUuid: (namespace: string, value: string) => string;
-  applyProviderPatch: (
-    patch: unknown,
-    state: { nodes: unknown[]; edges: unknown[] },
-    context: Record<string, unknown>,
-    topologyContext: Record<string, unknown>,
-  ) => {
-    ok: boolean;
-    state?: unknown;
-    diagnostics?: string[];
-    issues?: unknown[];
-  };
-  topologyCapabilityKey: (sourceKind: string, adapterVersion: string) => string;
-  codexTopology: Record<string, unknown>;
 };
 
 type ToolPair = {
@@ -113,41 +69,6 @@ type LocalEvidence = {
   artifacts: IngestInput["artifacts"];
   unresolved: MissingEvidence[];
 };
-
-async function loadIntentTrace(repo: string): Promise<IntentTraceRuntime> {
-  if (!repo) {
-    throw new Error(
-      "IntentTrace repository is required. Pass --intenttrace-repo /path/to/IntentTrace or set INTENTTRACE_REPO.",
-    );
-  }
-  const modulePaths = {
-    adapter: join(repo, "packages/adapters/dist/session.js"),
-    common: join(repo, "packages/adapters/dist/common.js"),
-    reducer: join(repo, "packages/intent-reducer/dist/index.js"),
-    codex: join(repo, "packages/adapters/dist/codex.js"),
-  };
-  for (const path of Object.values(modulePaths)) {
-    try {
-      await access(path);
-    } catch {
-      throw new Error(
-        `IntentTrace build output is missing: ${path}. Build the adapters, schema, and intent-reducer packages in the IntentTrace checkout first.`,
-      );
-    }
-  }
-  const adapter = await import(pathToFileURL(modulePaths.adapter).href);
-  const common = await import(pathToFileURL(modulePaths.common).href);
-  const reducer = await import(pathToFileURL(modulePaths.reducer).href);
-  const codex = await import(pathToFileURL(modulePaths.codex).href);
-  const codexAdapter = new codex.CodexSessionAdapter();
-  return {
-    prepareSessionParts: adapter.prepareSessionParts,
-    stableUuid: common.stableUuid,
-    applyProviderPatch: reducer.applyProviderPatch,
-    topologyCapabilityKey: reducer.topologyCapabilityKey,
-    codexTopology: codexAdapter.manifest.topology,
-  } as IntentTraceRuntime;
-}
 
 function sessionIdentity(bytes: Uint8Array): SessionIdentity {
   const text = new TextDecoder().decode(bytes);
@@ -1668,7 +1589,7 @@ function auditAnalysis(
           "审计时重新计算文件或目录 hash，并与 manifest 中的 SHA-256 比较",
         evidenceStatus: "verified_behavior",
         limitation:
-          "测试覆盖了篡改和缺失场景，但周报中还没有附真实失败输出截图。",
+          "测试覆盖了篡改和缺失场景，但报告中还没有附真实失败输出截图。",
       },
       {
         cause: "evidence 格式没有明确版本边界时，字段解释可能随实现变化",
@@ -1920,7 +1841,7 @@ function buildGraph(
             request.source.kind,
             request.source.adapterVersion,
           ),
-          runtime.codexTopology,
+          runtime.topologyBySource.codex,
         ],
       ]),
       registeredArtifactIds: new Set<string>(),
@@ -2265,7 +2186,7 @@ program
       share?: boolean;
     }) => {
       const identity = await resolveDefaultIdentity();
-      const runtime = await loadIntentTrace(options.intenttraceRepo);
+      const runtime = await loadIntentTraceRuntime(options.intenttraceRepo);
       const project = await withIdentity(identity, async (client) => {
         const result = await client.query<{ id: string; name: string }>(
           "SELECT id, name FROM projects WHERE tenant_id = $1 AND slug = $2",

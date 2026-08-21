@@ -4,11 +4,13 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { ingestContext } from "../../application/context-service.js";
 import { listProjects } from "../../application/project-service.js";
+import { parseTimeRange } from "../../domain/time.js";
 import { IngestInputSchema, SourceKindSchema } from "../../domain/types.js";
 import {
   resolveDefaultIdentity,
   withIdentity,
 } from "../../infrastructure/postgres/database.js";
+import { syncSessions } from "../../integrations/intenttrace/session-sync-service.js";
 import { shortId } from "./support.js";
 
 const collectOption = (value: string, previous: string[]): string[] => [
@@ -137,4 +139,64 @@ export function registerContextCommands(program: Command): void {
         );
       }
     });
+
+  program
+    .command("sync")
+    .description("Sync Codex and Claude sessions through IntentTrace")
+    .option("--source <source>", "codex, claude, or all", "all")
+    .option("--from <date>", "First calendar date, YYYY-MM-DD")
+    .option("--to <date>", "Last calendar date, YYYY-MM-DD")
+    .option("--since <duration>", "Relative duration such as 7d", "7d")
+    .option("--timezone <timezone>", "IANA timezone")
+    .option("--project <slug>", "Assign imported sessions to a project slug")
+    .option("--share", "Share imported sessions with team reports")
+    .option(
+      "--root <path>",
+      "Explicit session root; repeat as needed",
+      collectOption,
+      [],
+    )
+    .option("--max-files <count>", "Maximum files inspected per root", "200")
+    .option("--dry-run", "Discover and analyze without writing to PostgreSQL")
+    .option("--intenttrace-repo <path>", "IntentTrace checkout")
+    .action(
+      async (options: {
+        source: string;
+        from?: string;
+        to?: string;
+        since?: string;
+        timezone?: string;
+        project?: string;
+        share?: boolean;
+        root?: string[];
+        maxFiles: string;
+        dryRun?: boolean;
+        intenttraceRepo?: string;
+      }) => {
+        const identity = await resolveDefaultIdentity();
+        const source = z.enum(["codex", "claude", "all"]).parse(options.source);
+        const timezone = options.timezone ?? identity.timezone;
+        const range = parseTimeRange({
+          ...(options.from ? { from: options.from } : {}),
+          ...(options.to ? { to: options.to } : {}),
+          ...(!options.from && !options.to && options.since
+            ? { since: options.since }
+            : {}),
+          timezone,
+        });
+        const result = await withIdentity(identity, (client) =>
+          syncSessions(client, identity, {
+            source,
+            ...range,
+            ...(options.project ? { projectSlug: options.project } : {}),
+            visibility: options.share ? "project" : "private",
+            roots: options.root,
+            maxFiles: Number(options.maxFiles),
+            dryRun: options.dryRun,
+            intentTraceRepo: options.intenttraceRepo,
+          }),
+        );
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      },
+    );
 }

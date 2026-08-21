@@ -68,7 +68,9 @@ export async function resolveReport(
   );
   const reports = z.array(ReportListItemSchema).parse(values);
   if (reports.length === 0) {
-    throw new Error("No reports yet. Generate one with `ctx weekly`.");
+    throw new Error(
+      "No reports yet. Generate one with `ctx report --since 7d`.",
+    );
   }
   if (!selector || selector === "latest") return reports[0]!;
 

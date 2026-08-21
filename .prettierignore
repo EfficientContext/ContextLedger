@@ -2,6 +2,7 @@
 dist/
 node_modules/
 public/vendor/
+.local/
 prompts/weekly-report/v1/
 prompts/weekly-report/v2/
 prompts/weekly-report/v3/

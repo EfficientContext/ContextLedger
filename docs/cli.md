@@ -29,10 +29,10 @@ ctx ingest examples/context-envelope.json
 ## Reports
 
 ```bash
-ctx weekly
-ctx weekly --since 14d
+ctx report --since 7d
+ctx report --since 14d
 ctx report --from 2026-08-17 --to 2026-08-21
-ctx weekly --team
+ctx report --since 7d --team
 
 ctx reports
 ctx show latest
@@ -63,6 +63,18 @@ ctx connect claude
 ```
 
 ## IntentTrace
+
+```bash
+ctx sync --source all --since 7d
+ctx sync --source codex --from 2026-08-17 --to 2026-08-21
+ctx sync --source claude --since 36h --dry-run
+```
+
+`ctx sync` discovers sessions only after you run the command. It imports visible session
+events through IntentTrace and skips hidden reasoning and encrypted content. Repeating the
+same sync is idempotent.
+
+Explicit session import is still available:
 
 ```bash
 ctx import-trace \

@@ -8,6 +8,7 @@ const state = {
   currentReport: null,
   currentDetail: null,
   me: null,
+  modelProvider: null,
 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -78,6 +79,114 @@ async function loadHealth() {
   } catch {
     $("#healthText").textContent = "数据库未连接";
   }
+}
+
+async function loadModelProvider() {
+  state.modelProvider = await api("/api/model-provider");
+  const { active, presets } = state.modelProvider;
+  const providerSelect = $("#modelProvider");
+  providerSelect.innerHTML = presets
+    .map(
+      (preset) =>
+        `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>`,
+    )
+    .join("");
+  providerSelect.value = active.provider;
+  $("#modelName").value = active.model || "";
+  $("#modelBaseUrl").value = active.baseUrl || "";
+  $("#modelApiMode").value = active.apiMode;
+  $("#modelCliCommand").value = active.cliCommand || "";
+  $("#modelCliKind").value = active.cliKind || "";
+  $("#modelApiKey").value = "";
+  $("#modelApiKey").placeholder = active.apiKeyConfigured
+    ? `已保存 ${active.apiKeyHint}，留空会继续使用`
+    : "输入 API key";
+  renderModelOptions(
+    presets.find((preset) => preset.id === active.provider)?.suggestedModels ||
+      [],
+  );
+  renderModelStatus();
+  updateModelFieldVisibility();
+}
+
+function renderModelOptions(models) {
+  $("#modelOptions").innerHTML = models
+    .map((model) => `<option value="${escapeHtml(model)}"></option>`)
+    .join("");
+}
+
+function renderModelStatus() {
+  const active = state.modelProvider?.active;
+  if (!active) return;
+  const preset = state.modelProvider.presets.find(
+    (item) => item.id === active.provider,
+  );
+  $("#modelStatusTitle").textContent = preset?.label || active.provider;
+  $("#modelStatus").innerHTML =
+    active.provider === "cli"
+      ? `<div><dt>CLI</dt><dd>${escapeHtml(active.cliCommand || "自动检测")}</dd></div>
+         <div><dt>登录</dt><dd>使用 CLI 本地会话</dd></div>`
+      : `<div><dt>模型</dt><dd>${escapeHtml(active.model)}</dd></div>
+         <div><dt>Endpoint</dt><dd>${escapeHtml(active.baseUrl)}</dd></div>
+         <div><dt>接口</dt><dd>${escapeHtml(active.apiMode)}</dd></div>
+         <div><dt>密钥</dt><dd>${escapeHtml(active.apiKeyHint || "未配置或不需要")}</dd></div>`;
+  $("#activeModelSummary").textContent =
+    active.provider === "cli"
+      ? `报告模型：${preset?.label || "本地 CLI"}，生成时自动选择已登录的 CLI`
+      : `报告模型：${preset?.label || active.provider} / ${active.model}`;
+}
+
+function updateModelFieldVisibility() {
+  const provider = $("#modelProvider").value;
+  const isCli = provider === "cli";
+  $("#cliFields").classList.toggle("hidden", !isCli);
+  $("#modelName").closest("label").classList.toggle("hidden", isCli);
+  $("#modelBaseUrl").closest("label").classList.toggle("hidden", isCli);
+  $("#modelApiMode").closest("label").classList.toggle("hidden", isCli);
+  $("#modelApiKey").closest("label").classList.toggle("hidden", isCli);
+  $("#loadModelsButton").classList.toggle("hidden", isCli);
+}
+
+function applyProviderPreset() {
+  const provider = $("#modelProvider").value;
+  const preset = state.modelProvider.presets.find(
+    (item) => item.id === provider,
+  );
+  if (!preset) return;
+  const configured = state.modelProvider.configured?.[provider];
+  $("#modelName").value = configured?.model || preset.defaultModel;
+  $("#modelBaseUrl").value = configured?.baseUrl || preset.baseUrl;
+  $("#modelApiMode").value = configured?.apiMode || preset.apiMode;
+  $("#modelCliCommand").value = configured?.cliCommand || "";
+  $("#modelCliKind").value = configured?.cliKind || "";
+  $("#modelApiKey").value = "";
+  $("#modelApiKey").placeholder = configured?.apiKeyConfigured
+    ? `已保存 ${configured.apiKeyHint}，留空会继续使用`
+    : preset.requiresApiKey
+      ? "输入 API key"
+      : "可选，本地 endpoint 通常不需要";
+  renderModelOptions(preset.suggestedModels);
+  updateModelFieldVisibility();
+}
+
+async function saveModelSettings(showToast = true) {
+  const apiKey = $("#modelApiKey").value.trim();
+  const cliKind = $("#modelCliKind").value;
+  const body = {
+    provider: $("#modelProvider").value,
+    model: $("#modelName").value.trim(),
+    baseUrl: $("#modelBaseUrl").value.trim(),
+    apiMode: $("#modelApiMode").value,
+    cliCommand: $("#modelCliCommand").value.trim(),
+    ...(cliKind ? { cliKind } : {}),
+    ...(apiKey ? { apiKey } : {}),
+  };
+  await api("/api/model-provider", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  await loadModelProvider();
+  if (showToast) toast("报告模型已保存");
 }
 
 async function loadProjects() {
@@ -565,8 +674,12 @@ async function openReport(reportId) {
   state.currentReport = await api(`/api/reports/${reportId}`);
   state.currentDetail = null;
   $("#editorTitle").textContent = state.currentReport.title;
+  const writerMetadata = state.currentReport.generation_metadata || {};
+  const writerLabel = writerMetadata.model
+    ? `${writerMetadata.provider} / ${writerMetadata.model}`
+    : writerMetadata.writer || "unknown writer";
   $("#editorMeta").textContent =
-    `${reportRange(state.currentReport)} · ${state.currentReport.timezone} · ${state.currentReport.generation_metadata?.scope === "tenant" ? "团队共享" : "仅自己"} · revision ${state.currentReport.revision}`;
+    `${reportRange(state.currentReport)} · ${state.currentReport.timezone} · ${state.currentReport.generation_metadata?.scope === "tenant" ? "团队共享" : "仅自己"} · ${writerLabel} · revision ${state.currentReport.revision}`;
   $("#copyButton").classList.remove("hidden");
   renderEditor();
   loadReports();
@@ -714,6 +827,38 @@ $("#generateButton").addEventListener("click", async () => {
   await openReport(result.id);
 });
 
+$("#modelProvider").addEventListener("change", applyProviderPreset);
+
+$("#modelForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await saveModelSettings();
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "模型设置保存失败");
+  }
+});
+
+$("#loadModelsButton").addEventListener("click", async () => {
+  const button = $("#loadModelsButton");
+  button.disabled = true;
+  try {
+    await saveModelSettings(false);
+    const result = await api("/api/model-provider/models", { method: "POST" });
+    renderModelOptions(result.models);
+    toast(`读取到 ${result.models.length} 个模型`);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "读取模型列表失败");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#resetModelButton").addEventListener("click", async () => {
+  await api("/api/model-provider", { method: "DELETE" });
+  await loadModelProvider();
+  toast("已恢复 CLI 自动检测");
+});
+
 $("#syncButton").addEventListener("click", async () => {
   const fromDate = $("#syncFromDate").value;
   const toDate = $("#syncToDate").value;
@@ -830,6 +975,7 @@ $$(".nav-item").forEach((button) =>
     );
     $("#viewTitle").textContent = {
       reports: "报告",
+      models: "模型",
       contexts: "Context",
       projects: "项目",
       ingest: "写入 Context",
@@ -838,11 +984,23 @@ $$(".nav-item").forEach((button) =>
 );
 
 $("#refreshButton").addEventListener("click", async () => {
-  await Promise.all([loadMe(), loadHealth(), loadProjects(), loadReports()]);
+  await Promise.all([
+    loadMe(),
+    loadHealth(),
+    loadProjects(),
+    loadReports(),
+    loadModelProvider(),
+  ]);
   await loadContexts();
   toast("已刷新");
 });
 
 setDefaultDates();
-await Promise.all([loadMe(), loadHealth(), loadProjects(), loadReports()]);
+await Promise.all([
+  loadMe(),
+  loadHealth(),
+  loadProjects(),
+  loadReports(),
+  loadModelProvider(),
+]);
 await loadContexts();

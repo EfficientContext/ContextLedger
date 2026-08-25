@@ -90,32 +90,48 @@ else
   fail "IntentTrace is missing or not built; run scripts/install-intenttrace.sh"
 fi
 
-writer=""
-for candidate in tclaude claude tcodex codex; do
-  if command -v "$candidate" >/dev/null 2>&1; then
-    if [[ "$candidate" == "tclaude" ]]; then
-      if tclaude -- auth status 2>/dev/null | grep -q '"loggedIn": true'; then
-        writer="$candidate"
-        break
-      fi
-    elif [[ "$candidate" == "claude" ]]; then
-      if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
-        writer="$candidate"
-        break
-      fi
-    elif [[ "$candidate" == "tcodex" ]]; then
-      writer="$candidate"
-      break
-    elif "$candidate" -- login status >/dev/null 2>&1; then
-      writer="$candidate"
-      break
-    fi
+active_provider="cli"
+active_model=""
+if [[ -f "$ROOT_DIR/dist/src/interfaces/cli/main.js" ]]; then
+  model_status="$({
+    CONTEXT_LEDGER_HOME="$ROOT_DIR" node "$ROOT_DIR/dist/src/interfaces/cli/main.js" model status --json
+  } 2>/dev/null || true)"
+  if [[ -n "$model_status" ]]; then
+    active_provider="$(printf '%s' "$model_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).active.provider))' 2>/dev/null || printf 'cli')"
+    active_model="$(printf '%s' "$model_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).active.model||""))' 2>/dev/null || true)"
   fi
-done
-if [[ -n "$writer" ]]; then
-  pass "Report writer available: $writer"
+fi
+
+if [[ "$active_provider" != "cli" ]]; then
+  pass "Report writer configured: $active_provider / $active_model"
 else
-  fail "Log in to Claude Code or Codex so reports can be written"
+  writer=""
+  for candidate in tclaude claude tcodex codex; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      if [[ "$candidate" == "tclaude" ]]; then
+        if tclaude -- auth status 2>/dev/null | grep -q '"loggedIn": true'; then
+          writer="$candidate"
+          break
+        fi
+      elif [[ "$candidate" == "claude" ]]; then
+        if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
+          writer="$candidate"
+          break
+        fi
+      elif [[ "$candidate" == "tcodex" ]]; then
+        writer="$candidate"
+        break
+      elif "$candidate" -- login status >/dev/null 2>&1; then
+        writer="$candidate"
+        break
+      fi
+    fi
+  done
+  if [[ -n "$writer" ]]; then
+    pass "Report writer available: $writer"
+  else
+    fail "Log in to Claude Code or Codex, or configure an API provider with: ctx model set"
+  fi
 fi
 
 codex_cli=""
@@ -159,5 +175,6 @@ echo "Ready. $WARNINGS warning(s)."
 echo
 echo "Try:"
 echo "  context-ledger capture \"what changed and how it was validated\""
+echo "  context-ledger model"
 echo "  context-ledger report"
 echo "  context-ledger details latest"

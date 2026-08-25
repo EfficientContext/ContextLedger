@@ -7,10 +7,6 @@ const contextLedgerHome = resolve(
 );
 loadDotEnv({ path: resolve(contextLedgerHome, ".env"), quiet: true });
 
-const defaultIntentTraceRepo = process.env.INTENTTRACE_REPO?.trim()
-  ? process.env.INTENTTRACE_REPO
-  : join(contextLedgerHome, ".local", "intenttrace");
-
 const EnvSchema = z.object({
   CONTEXT_LEDGER_HOME: z.string().default(contextLedgerHome),
   DATABASE_URL: z
@@ -27,11 +23,18 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4318),
   DEFAULT_USER_EMAIL: z.string().email().default("demo@local.test"),
   DEFAULT_TENANT_SLUG: z.string().min(1).default("local"),
-  INTENTTRACE_REPO: z.string().default(defaultIntentTraceRepo),
+  INTENTTRACE_REPO: z.string().min(1),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  return EnvSchema.parse(env);
+  const home = resolve(env.CONTEXT_LEDGER_HOME ?? contextLedgerHome);
+  return EnvSchema.parse({
+    ...env,
+    CONTEXT_LEDGER_HOME: home,
+    INTENTTRACE_REPO: env.INTENTTRACE_REPO?.trim()
+      ? env.INTENTTRACE_REPO
+      : join(home, ".local", "intenttrace"),
+  });
 }

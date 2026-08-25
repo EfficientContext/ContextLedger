@@ -28,6 +28,36 @@ ctx ingest examples/context-envelope.json
 
 ## Reports
 
+Select the model used only for report writing:
+
+```bash
+ctx model
+ctx model status --json
+ctx model set --provider cli --cli-command codex --cli-kind codex
+
+export OPENAI_API_KEY="..."
+ctx model set --provider openai --model gpt-5.6-terra --api-key-env OPENAI_API_KEY
+
+ctx model set \
+  --provider deepseek \
+  --model deepseek-v4-pro \
+  --api-key-env DEEPSEEK_API_KEY
+
+ctx model set \
+  --provider custom \
+  --base-url http://127.0.0.1:11434/v1 \
+  --api-mode chat_completions \
+  --model qwen3
+
+ctx model models
+ctx model reset
+```
+
+Supported provider IDs are `cli`, `openai`, `deepseek`, `kimi`, `glm`, and `custom`.
+Use `responses` for the OpenAI Responses API and `chat_completions` for compatible chat
+endpoints. Settings and keys are local to the installation and are not stored in
+PostgreSQL.
+
 ```bash
 ctx report --since 7d
 ctx report --since 14d

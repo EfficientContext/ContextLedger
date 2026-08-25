@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$SCRIPT_DIR/package.json" && -x "$SCRIPT_DIR/bin/context-ledger" ]]; then
-  exec "$SCRIPT_DIR/bin/context-ledger" setup "$@"
+SCRIPT_SOURCE="${BASH_SOURCE[0]-}"
+if [[ -n "$SCRIPT_SOURCE" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+  if [[ -f "$SCRIPT_DIR/package.json" && -x "$SCRIPT_DIR/bin/context-ledger" ]]; then
+    exec "$SCRIPT_DIR/bin/context-ledger" setup "$@"
+  fi
 fi
 
 REPO_URL="${CONTEXT_LEDGER_REPO_URL:-https://github.com/EfficientContext/ContextLedger.git}"
@@ -25,4 +28,4 @@ else
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 fi
 
-exec "$INSTALL_DIR/bin/context-ledger" setup
+exec "$INSTALL_DIR/bin/context-ledger" setup "$@"

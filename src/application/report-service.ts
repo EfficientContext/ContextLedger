@@ -220,6 +220,10 @@ export async function generateReport(
       input.timezone,
       JSON.stringify({
         writer: rewritten.writer,
+        provider: rewritten.provider,
+        model: rewritten.model,
+        endpoint: rewritten.endpoint,
+        apiMode: rewritten.apiMode,
         promptVersion: rewritten.promptVersion,
         promptSha256: rewritten.promptSha256,
         skills: rewritten.skills,

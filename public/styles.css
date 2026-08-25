@@ -201,6 +201,82 @@ h2 {
   font-size: 13px;
   line-height: 1.5;
 }
+.model-summary {
+  margin-top: 8px;
+  color: var(--green) !important;
+  font-weight: 700;
+}
+.model-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.3fr) minmax(300px, 0.7fr);
+  gap: 18px;
+  align-items: start;
+}
+.model-form {
+  max-width: none;
+}
+.form-help {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.cli-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.model-status-panel {
+  padding: 22px;
+}
+.model-status-panel dl {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+.model-status-panel dl div {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.model-status-panel dt {
+  color: var(--muted);
+}
+.model-status-panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.security-note,
+.cli-login-note {
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 14px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+.cli-login-note {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+.security-note p,
+.cli-login-note p {
+  margin: 7px 0 0;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.security-note code,
+.cli-login-note code {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
 .date-row {
   display: flex;
   gap: 10px;
@@ -998,6 +1074,7 @@ pre {
   .content-grid,
   .projects-grid,
   .ingest-grid,
+  .model-settings-grid,
   .sync-panel,
   .context-grid {
     grid-template-columns: 1fr;

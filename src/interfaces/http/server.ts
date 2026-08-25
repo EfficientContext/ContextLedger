@@ -4,6 +4,17 @@ import fastifyStatic from "@fastify/static";
 import { z } from "zod";
 import { loadConfig } from "../../infrastructure/config.js";
 import {
+  ApiModeSchema,
+  discoverProviderModels,
+  listConfiguredModelProviders,
+  loadActiveModelProvider,
+  MODEL_PROVIDER_PRESETS,
+  ProviderIdSchema,
+  resetModelProvider,
+  sanitizeModelProvider,
+  saveModelProvider,
+} from "../../infrastructure/model-provider.js";
+import {
   pool,
   resolveDefaultIdentity,
   withIdentity,
@@ -91,6 +102,41 @@ app.get("/api/me", async () => ({
   email: defaultIdentity.email,
   timezone: defaultIdentity.timezone,
 }));
+
+app.get("/api/model-provider", async () => ({
+  active: sanitizeModelProvider(await loadActiveModelProvider()),
+  configured: await listConfiguredModelProviders(),
+  presets: MODEL_PROVIDER_PRESETS,
+}));
+
+app.put("/api/model-provider", async (request) => {
+  const body = z
+    .object({
+      provider: ProviderIdSchema,
+      model: z.string().optional(),
+      baseUrl: z.string().optional(),
+      apiMode: ApiModeSchema.optional(),
+      apiKey: z.string().optional(),
+      clearApiKey: z.boolean().optional(),
+      cliCommand: z.string().optional(),
+      cliKind: z.enum(["claude", "codex"]).optional(),
+    })
+    .parse(request.body);
+  const saved = await saveModelProvider(body);
+  return { active: sanitizeModelProvider(saved) };
+});
+
+app.post("/api/model-provider/models", async () => {
+  const active = await loadActiveModelProvider();
+  return { models: await discoverProviderModels(active) };
+});
+
+app.delete("/api/model-provider", async () => {
+  await resetModelProvider();
+  return {
+    active: sanitizeModelProvider(await loadActiveModelProvider()),
+  };
+});
 
 app.get("/api/projects", async (request) => {
   const identity = identityFromRequest(request);

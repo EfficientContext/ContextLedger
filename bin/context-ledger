@@ -37,10 +37,10 @@ case "$COMMAND" in
     export CONTEXT_LEDGER_HOME="$ROOT_DIR"
     exec node dist/src/integrations/intenttrace/importer.js "$@"
     ;;
-  configure)
+  configure|model)
     cd "$ROOT_DIR"
     export CONTEXT_LEDGER_HOME="$ROOT_DIR"
-    exec node dist/src/interfaces/cli/main.js configure "$@"
+    exec node dist/src/interfaces/cli/main.js "$COMMAND" "$@"
     ;;
   open)
     exec "$ROOT_DIR/scripts/start.sh" "$@"
@@ -81,6 +81,9 @@ Commands:
   context-ledger sync                  Sync Codex/Claude sessions through IntentTrace
   context-ledger report                  Generate the last seven days
   ctx weekly                           Short form of report
+  context-ledger model                   Show the report model
+  context-ledger model set ...           Select a provider, endpoint, and model
+  context-ledger model models            List models from the active provider
   context-ledger reports                 List saved reports
   context-ledger show [REPORT]           Print a report; defaults to latest
   context-ledger details [REPORT]        List detail tags

@@ -51,7 +51,7 @@ ContextLedger 会从 session 和用户补充的 Context 中整理：
 
 - Node.js 22+
 - Docker Desktop 或 PostgreSQL 17
-- 已登录的 Codex 或 Claude Code CLI，用来生成报告
+- 已登录的 Codex 或 Claude Code CLI，或者你选择的报告模型 API key
 
 一条命令安装：
 
@@ -101,6 +101,32 @@ ctx save --share "Completed the repair runner and validated the integration."
 ```
 
 ### 3. 生成周报或其他时间范围的报告
+
+先选择用来写报告的模型。这个设置只影响报告生成，不影响 session 同步、Context 保存和浏览：
+
+```bash
+# 默认方式：复用本机 Codex 或 Claude 登录
+codex login
+ctx model set --provider cli --cli-command codex --cli-kind codex
+
+# 或使用 API。通过环境变量读取 key，可以避免留在 shell history 里
+export OPENAI_API_KEY="..."
+ctx model set \
+  --provider openai \
+  --model gpt-5.6-terra \
+  --api-key-env OPENAI_API_KEY
+
+# 本地或自托管的 OpenAI-compatible endpoint 可以不填 API key
+ctx model set \
+  --provider custom \
+  --base-url http://127.0.0.1:11434/v1 \
+  --api-mode chat_completions \
+  --model qwen3
+```
+
+`ctx model` 可以查看当前选择，但不会显示完整 key。`ctx model models` 会读取供应商当前提供的
+模型列表。每个供应商的凭据只保存在本机 `.local/model-provider.json`，文件权限为仅当前用户
+可读写。凭据不会写入 PostgreSQL，也不会进入报告元数据。
 
 ```bash
 # 最近 7 天
@@ -156,6 +182,7 @@ http://127.0.0.1:4318
 - 修改自己的 Context，并保存 revision；
 - 补充一段修正说明，让后续报告按新说明生成；
 - 选择任意日期范围生成报告；
+- 选择 OpenAI、DeepSeek、Kimi、GLM、自定义 endpoint，或复用本机 CLI 登录来生成报告；
 - 打开和修改 detail tag；
 - 删除报告。
 

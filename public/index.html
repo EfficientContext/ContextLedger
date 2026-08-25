@@ -18,6 +18,7 @@
         </div>
         <nav>
           <button class="nav-item active" data-view="reports">报告</button>
+          <button class="nav-item" data-view="models">模型</button>
           <button class="nav-item" data-view="contexts">Context</button>
           <button class="nav-item" data-view="projects">项目</button>
           <button class="nav-item" data-view="ingest">写入 Context</button>
@@ -66,6 +67,9 @@
               <p>
                 按自然日生成。每个结论会保留证据状态，因果证据不足时不会硬写成“因为”。
               </p>
+              <p id="activeModelSummary" class="model-summary">
+                正在读取报告模型
+              </p>
             </div>
             <div class="date-row">
               <label>开始日期<input id="fromDate" type="date" /></label>
@@ -103,6 +107,102 @@
                 报告正文会显示在这里。
               </div>
             </div>
+          </div>
+        </section>
+
+        <section id="modelsView" class="view">
+          <div class="model-settings-grid">
+            <form id="modelForm" class="panel form-panel model-form">
+              <div>
+                <p class="eyebrow">Report writer</p>
+                <h2>周报生成模型</h2>
+                <p class="form-help">
+                  这里只影响报告生成。同步、保存和浏览 Context 不会调用模型。
+                </p>
+              </div>
+              <label
+                >供应商<select id="modelProvider" name="provider"></select
+              ></label>
+              <label
+                >模型
+                <input
+                  id="modelName"
+                  name="model"
+                  list="modelOptions"
+                  placeholder="选择或输入模型 ID"
+                />
+                <datalist id="modelOptions"></datalist>
+              </label>
+              <label
+                >Endpoint
+                <input
+                  id="modelBaseUrl"
+                  name="baseUrl"
+                  type="url"
+                  placeholder="https://api.example.com/v1"
+                />
+              </label>
+              <label
+                >API 模式<select id="modelApiMode" name="apiMode">
+                  <option value="responses">Responses API</option>
+                  <option value="chat_completions">Chat Completions</option>
+                </select></label
+              >
+              <label
+                >API key
+                <input
+                  id="modelApiKey"
+                  name="apiKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="留空会保留已经保存的 key"
+                />
+              </label>
+              <div id="cliFields" class="cli-fields">
+                <label
+                  >CLI 命令<input
+                    id="modelCliCommand"
+                    name="cliCommand"
+                    placeholder="留空时自动检测"
+                /></label>
+                <label
+                  >CLI 类型<select id="modelCliKind" name="cliKind">
+                    <option value="">自动判断</option>
+                    <option value="codex">Codex</option>
+                    <option value="claude">Claude</option>
+                  </select></label
+                >
+              </div>
+              <div class="model-actions">
+                <button class="primary" type="submit">保存并使用</button>
+                <button class="secondary" id="loadModelsButton" type="button">
+                  读取模型列表
+                </button>
+                <button class="secondary" id="resetModelButton" type="button">
+                  恢复 CLI 自动检测
+                </button>
+              </div>
+            </form>
+            <aside class="panel model-status-panel">
+              <p class="eyebrow">Local credentials</p>
+              <h2 id="modelStatusTitle">正在读取</h2>
+              <dl id="modelStatus"></dl>
+              <div class="security-note">
+                <strong>凭据只保存在这台机器</strong>
+                <p>
+                  API key 写入 <code>.local/model-provider.json</code>，不会进入
+                  PostgreSQL，也不会显示在这个页面或报告正文里。
+                </p>
+              </div>
+              <div class="cli-login-note">
+                <strong>使用 GPT / Claude 账号登录</strong>
+                <p>
+                  选择“Codex / Claude CLI 登录”，先在终端运行
+                  <code>codex login</code> 或
+                  <code>claude auth login</code>。生成报告时会复用这个本地登录。
+                </p>
+              </div>
+            </aside>
           </div>
         </section>
 

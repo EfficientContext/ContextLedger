@@ -14,6 +14,11 @@ import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { loadConfig } from "../infrastructure/config.js";
 import {
+  generateWithModelProvider,
+  loadActiveModelProvider,
+  type ModelProviderConfig,
+} from "../infrastructure/model-provider.js";
+import {
   reportDetailTag,
   type CompiledBlock,
   type CompiledReportDetail,
@@ -47,14 +52,27 @@ export type ReportWriterResult = {
   promptVersion: string;
   promptSha256: string;
   writer: string;
+  provider: string;
+  model: string | null;
+  endpoint: string | null;
+  apiMode: string | null;
   skills: string[];
 };
 
-type WriterBackend = {
+type CliWriterBackend = {
+  type: "cli";
   command: string;
-  kind: "claude" | "codex";
+  cliKind: "claude" | "codex";
   label: string;
 };
+
+type ApiWriterBackend = {
+  type: "api";
+  config: ModelProviderConfig;
+  label: string;
+};
+
+type WriterBackend = CliWriterBackend | ApiWriterBackend;
 
 async function runWriterProcess(
   command: string,
@@ -192,9 +210,14 @@ async function writerIsAuthenticated(
   }
 }
 
-async function resolveWriterBackend(): Promise<WriterBackend> {
-  const configured = process.env.CONTEXT_LEDGER_WRITER_BIN?.trim();
-  const configuredKind = process.env.CONTEXT_LEDGER_WRITER_KIND?.trim();
+async function resolveCliWriterBackend(
+  provider: ModelProviderConfig,
+): Promise<CliWriterBackend> {
+  const configured =
+    provider.cliCommand?.trim() ||
+    process.env.CONTEXT_LEDGER_WRITER_BIN?.trim();
+  const configuredKind =
+    provider.cliKind ?? process.env.CONTEXT_LEDGER_WRITER_KIND?.trim();
   const candidates = configured
     ? [configured]
     : ["tclaude", "claude", "tcodex", "codex"];
@@ -216,12 +239,34 @@ async function resolveWriterBackend(): Promise<WriterBackend> {
       }
       continue;
     }
-    return { command, kind, label: basename(command) };
+    return {
+      type: "cli",
+      command,
+      cliKind: kind,
+      label: basename(command),
+    };
   }
 
   throw new Error(
     "No logged-in report writer found. Log in to Claude Code or Codex, then run `context-ledger doctor`.",
   );
+}
+
+async function resolveWriterBackend(root: string): Promise<WriterBackend> {
+  const provider = await loadActiveModelProvider(root);
+  if (provider.provider === "cli") {
+    return resolveCliWriterBackend(provider);
+  }
+  if (!provider.model || !provider.baseUrl) {
+    throw new Error(
+      "The active report model is incomplete. Run `ctx model set` or open the Models page.",
+    );
+  }
+  return {
+    type: "api",
+    config: provider,
+    label: `${provider.provider}:${provider.model}`,
+  };
 }
 
 async function findSkillSource(root: string, skill: string): Promise<string> {
@@ -255,6 +300,10 @@ export async function rewriteReportBlocks(
       promptVersion: "none",
       promptSha256: "",
       writer: "none",
+      provider: "none",
+      model: null,
+      endpoint: null,
+      apiMode: null,
       skills: [
         "research-writing-skill",
         "scientific-toolkit-skill",
@@ -292,7 +341,7 @@ export async function rewriteReportBlocks(
     "scientific-toolkit-skill",
     "shuorenhua",
   ];
-  const writer = await resolveWriterBackend();
+  const writer = await resolveWriterBackend(root);
   const skillSources = new Map<string, string>();
   for (const skill of skills) {
     skillSources.set(skill, await findSkillSource(root, skill));
@@ -342,54 +391,53 @@ export async function rewriteReportBlocks(
     });
   }
 
+  const inputText = `${JSON.stringify(
+    {
+      report: context,
+      blocks: blocks.map((block) => ({
+        sectionKey: block.sectionKey,
+        projectName: block.projectName,
+        supportingDraft: block.content,
+        intentTrace: traceContexts
+          .filter(
+            (trace) =>
+              (trace.projectId ?? "unassigned") ===
+              (block.projectId ?? "unassigned"),
+          )
+          .map((trace, position) => ({
+            detailTag: reportDetailTag(position, trace.title),
+            title: trace.title,
+            statedIntent: trace.intent,
+            graph: trace.intentGraph,
+            validations: trace.validations.map((row) => ({
+              command: row.command,
+              result: row.result,
+              meaning: row.meaning,
+            })),
+            localEvidence: trace.autoEvidence,
+            limitations: trace.boundaries,
+            userNote: trace.userNote ?? null,
+            technicalFacts: trace.technicalFacts,
+            evidenceTables: trace.evidenceTables,
+            referencePaths: trace.referencePaths,
+          })),
+        requiredTechnicalSpans: technicalSpans(block.content),
+        requiredReferences: referencesBySection.get(block.sectionKey) ?? [],
+        hasUnmatchedBaseline: block.missingEvidence.some(
+          (item) => item.code === "missing_baseline",
+        ),
+      })),
+    },
+    null,
+    2,
+  )}\n`;
+
   await Promise.all([
     mkdir(claudeSkillRoot, { recursive: true }),
     mkdir(codexSkillRoot, { recursive: true }),
   ]);
   await Promise.all([
-    writeFile(
-      inputPath,
-      `${JSON.stringify(
-        {
-          report: context,
-          blocks: blocks.map((block) => ({
-            sectionKey: block.sectionKey,
-            projectName: block.projectName,
-            supportingDraft: block.content,
-            intentTrace: traceContexts
-              .filter(
-                (trace) =>
-                  (trace.projectId ?? "unassigned") ===
-                  (block.projectId ?? "unassigned"),
-              )
-              .map((trace, position) => ({
-                detailTag: reportDetailTag(position, trace.title),
-                title: trace.title,
-                statedIntent: trace.intent,
-                graph: trace.intentGraph,
-                validations: trace.validations.map((row) => ({
-                  command: row.command,
-                  result: row.result,
-                  meaning: row.meaning,
-                })),
-                localEvidence: trace.autoEvidence,
-                limitations: trace.boundaries,
-                userNote: trace.userNote ?? null,
-                technicalFacts: trace.technicalFacts,
-                evidenceTables: trace.evidenceTables,
-                referencePaths: trace.referencePaths,
-              })),
-            requiredTechnicalSpans: technicalSpans(block.content),
-            requiredReferences: referencesBySection.get(block.sectionKey) ?? [],
-            hasUnmatchedBaseline: block.missingEvidence.some(
-              (item) => item.code === "missing_baseline",
-            ),
-          })),
-        },
-        null,
-        2,
-      )}\n`,
-    ),
+    writeFile(inputPath, inputText),
     writeFile(schemaPath, `${JSON.stringify(outputJsonSchema(), null, 2)}\n`),
     writeFile(promptCopy, promptText),
     writeFile(acceptanceCopy, acceptanceText),
@@ -402,61 +450,79 @@ export async function rewriteReportBlocks(
     }),
   ]);
 
-  const instruction =
-    "Read ./PROMPT.md, ./ACCEPTANCE.md, ./INPUT.json, and ./OUTPUT_SCHEMA.json. " +
-    `Read the required skills from ./.${writer.kind}/skills. Return only the structured output.`;
-
   try {
     const schemaText = await readFile(schemaPath, "utf8");
-    const commonOptions = {
-      cwd: workdir,
-      timeoutMs: Number(
-        process.env.CONTEXT_LEDGER_WRITER_TIMEOUT_MS ?? 360_000,
-      ),
-      env: process.env,
-    };
-    if (writer.kind === "claude") {
-      const result = await runWriterProcess(
-        writer.command,
-        [
-          "-p",
-          instruction,
-          "--output-format",
-          "json",
-          "--json-schema",
-          schemaText,
-          "--no-session-persistence",
-          "--permission-mode",
-          "dontAsk",
-          "--tools",
-          "Read",
-          "--effort",
-          process.env.CONTEXT_LEDGER_WRITER_REASONING_EFFORT ?? "medium",
-          "--setting-sources",
-          "project",
-        ],
-        commonOptions,
-      );
-      await writeFile(outputPath, result.stdout);
+    if (writer.type === "cli") {
+      const instruction =
+        "Read ./PROMPT.md, ./ACCEPTANCE.md, ./INPUT.json, and ./OUTPUT_SCHEMA.json. " +
+        `Read the required skills from ./.${writer.cliKind}/skills. Return only the structured output.`;
+      const commonOptions = {
+        cwd: workdir,
+        timeoutMs: Number(
+          process.env.CONTEXT_LEDGER_WRITER_TIMEOUT_MS ?? 360_000,
+        ),
+        env: process.env,
+      };
+      if (writer.cliKind === "claude") {
+        const result = await runWriterProcess(
+          writer.command,
+          [
+            "-p",
+            instruction,
+            "--output-format",
+            "json",
+            "--json-schema",
+            schemaText,
+            "--no-session-persistence",
+            "--permission-mode",
+            "dontAsk",
+            "--tools",
+            "Read",
+            "--effort",
+            process.env.CONTEXT_LEDGER_WRITER_REASONING_EFFORT ?? "medium",
+            "--setting-sources",
+            "project",
+          ],
+          commonOptions,
+        );
+        await writeFile(outputPath, result.stdout);
+      } else {
+        await runWriterProcess(
+          writer.command,
+          [
+            "exec",
+            "-C",
+            workdir,
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--sandbox",
+            "read-only",
+            "--output-schema",
+            schemaPath,
+            "--output-last-message",
+            outputPath,
+            instruction,
+          ],
+          commonOptions,
+        );
+      }
     } else {
-      await runWriterProcess(
-        writer.command,
-        [
-          "exec",
-          "-C",
-          workdir,
-          "--skip-git-repo-check",
-          "--ephemeral",
-          "--sandbox",
-          "read-only",
-          "--output-schema",
-          schemaPath,
-          "--output-last-message",
-          outputPath,
-          instruction,
-        ],
-        commonOptions,
+      const skillInstructions = await Promise.all(
+        skills.map(async (skill) =>
+          readFile(join(skillSources.get(skill)!, "SKILL.md"), "utf8"),
+        ),
       );
+      const output = await generateWithModelProvider(writer.config, {
+        instructions: [
+          promptText,
+          acceptanceText,
+          ...skillInstructions,
+          "Return only one JSON object matching the supplied schema. Do not use Markdown code fences.",
+        ].join("\n\n---\n\n"),
+        content: `OUTPUT_SCHEMA.json:\n${schemaText}\n\nINPUT.json:\n${inputText}`,
+        schema: outputJsonSchema(),
+      });
+      await writeFile(outputPath, output);
     }
   } catch (error) {
     const failure = error as {
@@ -482,8 +548,9 @@ export async function rewriteReportBlocks(
     );
   }
 
+  const rawText = (await readFile(outputPath, "utf8")).trim();
   const rawWriterOutput = JSON.parse(
-    await readFile(outputPath, "utf8"),
+    rawText.replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, ""),
   ) as unknown;
   const direct = WriterOutputSchema.safeParse(rawWriterOutput);
   const parsed = direct.success
@@ -546,6 +613,10 @@ export async function rewriteReportBlocks(
     promptVersion: manifest.version,
     promptSha256,
     writer: writer.label,
+    provider: writer.type === "api" ? writer.config.provider : "cli",
+    model: writer.type === "api" ? writer.config.model : null,
+    endpoint: writer.type === "api" ? writer.config.baseUrl : null,
+    apiMode: writer.type === "api" ? writer.config.apiMode : null,
     skills,
   };
 }

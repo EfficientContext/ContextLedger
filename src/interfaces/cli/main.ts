@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { pool } from "../../infrastructure/postgres/database.js";
 import { registerAdminCommands } from "./admin-commands.js";
 import { registerContextCommands } from "./context-commands.js";
+import { registerModelCommands } from "./model-commands.js";
 import { registerReportCommands } from "./report-commands.js";
 import { registerSystemCommands } from "./system-commands.js";
 
@@ -13,6 +14,7 @@ const program = new Command()
 
 registerContextCommands(program);
 registerReportCommands(program);
+registerModelCommands(program);
 registerAdminCommands(program);
 registerSystemCommands(program);
 

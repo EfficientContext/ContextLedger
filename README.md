@@ -34,6 +34,7 @@ Which claims have measured results, and which are only design rationale?
 - automatic project classification
 - PostgreSQL-backed personal and team Context
 - reports for arbitrary date ranges
+- selectable OpenAI, DeepSeek, Kimi, GLM, custom endpoints, or local CLI login for report writing
 - concise summaries with stable technical detail tags
 - IntentTrace graphs, validation, claims, and references in the web UI
 - editable Context with revision history
@@ -49,7 +50,7 @@ Requirements:
 
 - Node.js 22+
 - Docker Desktop or PostgreSQL 17
-- a logged-in Codex or Claude Code CLI for report writing
+- a logged-in Codex or Claude Code CLI, or an API key for the report model you choose
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EfficientContext/ContextLedger/main/install.sh | bash
@@ -104,6 +105,34 @@ ctx save --share "Completed the repair runner and validated the integration."
 
 ### Generate a report
 
+Choose the model that writes reports. This setting does not affect session sync, Context
+storage, or browsing:
+
+```bash
+# Reuse a local Codex or Claude login (the default)
+codex login
+ctx model set --provider cli --cli-command codex --cli-kind codex
+
+# Or use an API provider. Reading the key from an environment variable avoids shell history.
+export OPENAI_API_KEY="..."
+ctx model set \
+  --provider openai \
+  --model gpt-5.6-terra \
+  --api-key-env OPENAI_API_KEY
+
+# A local or self-hosted OpenAI-compatible endpoint can omit the API key.
+ctx model set \
+  --provider custom \
+  --base-url http://127.0.0.1:11434/v1 \
+  --api-mode chat_completions \
+  --model qwen3
+```
+
+Use `ctx model` to inspect the active choice without exposing the key. Use
+`ctx model models` to read the provider's current model list. Provider credentials are
+stored only in `.local/model-provider.json` with owner-only permissions. They are never
+written to PostgreSQL or report metadata.
+
 ```bash
 # Last seven days
 ctx report --since 7d
@@ -151,6 +180,7 @@ The web UI supports:
 - editing your own Context and saving revisions;
 - adding corrections that later reports will read;
 - generating reports for any date range;
+- choosing OpenAI, DeepSeek, Kimi, GLM, a custom endpoint, or local CLI login for report generation;
 - opening and editing report detail tags;
 - deleting reports.
 

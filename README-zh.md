@@ -56,7 +56,7 @@ ContextLedger 会从 session 和用户补充的 Context 中整理：
 一条命令安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EfficientContext/ContextLedger/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SecretSettler/ContextLedger/main/install.sh | bash
 ```
 
 安装脚本会准备 PostgreSQL、IntentTrace、writing skills、`ctx` 命令和 MCP 连接，然后启动网页。

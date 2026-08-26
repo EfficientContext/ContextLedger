@@ -53,7 +53,7 @@ Requirements:
 - a logged-in Codex or Claude Code CLI, or an API key for the report model you choose
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EfficientContext/ContextLedger/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SecretSettler/ContextLedger/main/install.sh | bash
 ```
 
 The installer:

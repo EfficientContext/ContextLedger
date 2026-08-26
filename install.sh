@@ -9,7 +9,7 @@ if [[ -n "$SCRIPT_SOURCE" ]]; then
   fi
 fi
 
-REPO_URL="${CONTEXT_LEDGER_REPO_URL:-https://github.com/EfficientContext/ContextLedger.git}"
+REPO_URL="${CONTEXT_LEDGER_REPO_URL:-https://github.com/SecretSettler/ContextLedger.git}"
 INSTALL_DIR="${CONTEXT_LEDGER_INSTALL_DIR:-$HOME/.context-ledger}"
 
 if ! command -v git >/dev/null 2>&1; then
